@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "959574365504",
+    "project_id": "camera-rental-b5500",
+    "storage_bucket": "camera-rental-b5500.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:959574365504:android:b43dfd413b72a3022896a5",
+        "android_client_info": {
+          "package_name": "com.camerarent"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRPa36phgj33rOooQXt66PJVsUKyMTaJQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:959574365504:android:0a4167fbe3564e652896a5",
+        "android_client_info": {
+          "package_name": "com.camerarentapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRPa36phgj33rOooQXt66PJVsUKyMTaJQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
