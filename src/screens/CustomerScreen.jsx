@@ -10,12 +10,14 @@ import {
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { subscribeToCustomers } from '../firebase/customersService';
 import SearchBar from '../components/SearchBar';
+import useDebounce from '../utils/useDebounce';
 import CustomerCard from '../components/CustomerCard';
 import FloatingActionButton from '../components/FloatingActionButton';
 import EmptyState from '../components/EmptyState';
 
 const CustomerScreen = ({ navigation }) => {
   const [searchText, setSearchText] = useState('');
+  const debouncedSearchText = useDebounce(searchText, 300);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,8 +32,8 @@ const CustomerScreen = ({ navigation }) => {
 
   const filtered = customers.filter(
     (c) =>
-      c.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      c.phone.includes(searchText)
+      c.name.toLowerCase().includes(debouncedSearchText.toLowerCase()) ||
+      c.phone.includes(debouncedSearchText)
   );
 
   if (loading) {

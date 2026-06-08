@@ -13,6 +13,7 @@ import {
 import { colors, spacing, typography, borderRadius, shadows } from '../theme';
 import { subscribeToItems, deleteItem } from '../firebase/itemsService';
 import SearchBar from '../components/SearchBar';
+import useDebounce from '../utils/useDebounce';
 import ItemCard from '../components/ItemCard';
 import FloatingActionButton from '../components/FloatingActionButton';
 import EmptyState from '../components/EmptyState';
@@ -28,6 +29,7 @@ const categories = [
 
 const InventoryScreen = ({ navigation }) => {
   const [searchText, setSearchText] = useState('');
+  const debouncedSearchText = useDebounce(searchText, 300);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [inventoryItems, setInventoryItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +45,7 @@ const InventoryScreen = ({ navigation }) => {
   }, []);
 
   const filtered = inventoryItems.filter((item) => {
-    const matchesSearch = item.name.toLowerCase().includes(searchText.toLowerCase());
+    const matchesSearch = item.name.toLowerCase().includes(debouncedSearchText.toLowerCase());
     const matchesCategory =
       selectedCategory === 'All' || item.category === selectedCategory;
     return matchesSearch && matchesCategory;

@@ -73,3 +73,24 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Firebase and sensitive files
+android/app/google-services.json
+ios/GoogleService-Info.plist
+.env
+.env.local
+.env.*.local
+.credentials/
+
+# IDE and OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.log
+
+# nul file
+nul

@@ -58,45 +58,55 @@ const SearchBar = ({
     <Animated.View
       style={[
         styles.container,
-        { borderColor, borderWidth: 1.5 },
-        { transform: [{ scale: scaleAnim }] },
+        { borderColor },
         style,
       ]}
     >
-      <Text style={styles.searchIcon}>⌕</Text>
-      <TextInput
-        style={styles.input}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        autoFocus={autoFocus}
-        returnKeyType="search"
-      />
-      {value ? (
-        <TouchableOpacity
-          onPress={() => onChangeText('')}
-          style={styles.clearButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.clearText}>✕</Text>
-        </TouchableOpacity>
-      ) : null}
+      <Animated.View
+        style={[
+          styles.inner,
+          { transform: [{ scale: scaleAnim }] },
+        ]}
+      >
+        <Text style={styles.searchIcon}>⌕</Text>
+        <TextInput
+          style={styles.input}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textMuted}
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          autoFocus={autoFocus}
+          returnKeyType="search"
+        />
+        {value ? (
+          <TouchableOpacity
+            onPress={() => onChangeText('')}
+            style={styles.clearButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.clearText}>✕</Text>
+          </TouchableOpacity>
+        ) : null}
+      </Animated.View>
     </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  inner: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: Platform.OS === 'ios' ? spacing.md : spacing.sm + 2,
-    marginBottom: spacing.md,
   },
   searchIcon: {
     fontSize: 18,
