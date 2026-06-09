@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { colors, borderRadius, typography, spacing } from '../theme';
 
-const SearchBar = ({
+const SearchBar = React.memo(({
   placeholder = 'Search...',
   value,
   onChangeText,
@@ -92,7 +92,7 @@ const SearchBar = ({
       </Animated.View>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

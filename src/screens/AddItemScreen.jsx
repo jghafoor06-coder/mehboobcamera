@@ -40,6 +40,7 @@ const AddItemScreen = ({ route, navigation }) => {
     { id: 'tripods', name: 'Tripods' },
     { id: 'lighting', name: 'Lighting' },
     { id: 'accessories', name: 'Accessories' },
+    { id: 'gimble', name: 'Gimble' },
   ];
   const isValid = name.length > 0 && selectedCategory.length > 0 && pricePerDay.length > 0 && quantity.length > 0;
 

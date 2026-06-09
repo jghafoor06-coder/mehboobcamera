@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { colors, borderRadius, spacing } from '../theme';
 
-const GradientCard = ({
+const GradientCard = React.memo(({
   children,
   onPress,
   gradient = colors.primaryGradient,
@@ -131,6 +131,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     zIndex: 1,
   },
+});
+
 });
 
 export default GradientCard;

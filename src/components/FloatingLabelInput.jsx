@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { colors, typography, spacing } from '../theme';
 
-const FloatingLabelInput = ({ label, value, onChangeText, keyboardType, maxLength }) => {
+const FloatingLabelInput = React.memo(({ label, value, onChangeText, keyboardType, maxLength }) => {
   const [isFocused, setIsFocused] = useState(false);
   const labelAnim = useRef(new Animated.Value(value ? 1 : 0)).current;
   const borderAnim = useRef(new Animated.Value(0)).current;
@@ -95,6 +95,8 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
   },
+});
+
 });
 
 export default FloatingLabelInput;

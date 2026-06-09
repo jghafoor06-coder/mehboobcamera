@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -30,11 +30,23 @@ const CustomerScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, []);
 
-  const filtered = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(debouncedSearchText.toLowerCase()) ||
-      c.phone.includes(debouncedSearchText)
-  );
+  const filtered = useMemo(() => {
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(debouncedSearchText.toLowerCase()) ||
+        c.phone.includes(debouncedSearchText)
+    );
+  }, [customers, debouncedSearchText]);
+
+  const keyExtractor = useCallback((item) => item.id, []);
+
+  const renderItem = useCallback(({ item, index }) => (
+    <CustomerCard
+      customer={item}
+      index={index}
+      onPress={() => navigation.navigate('CustomerProfile', { customerId: item.id })}
+    />
+  ), [navigation]);
 
   if (loading) {
     return (
@@ -72,16 +84,14 @@ const CustomerScreen = ({ navigation }) => {
         ) : (
           <FlatList
             data={filtered}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item, index }) => (
-              <CustomerCard
-                customer={item}
-                index={index}
-                onPress={() => navigation.navigate('CustomerProfile', { customerId: item.id })}
-              />
-            )}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.list}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+            initialNumToRender={8}
             refreshControl={
               <RefreshControl
                 refreshing={false}

@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { colors, borderRadius, spacing } from '../theme';
 import GlowBackground from './GlowBackground';
 
-const GlassmorphismPanel = ({ children, style, noPadding = false }) => {
+const GlassmorphismPanel = React.memo(({ children, style, noPadding = false }) => {
   return (
     <View style={[styles.container, style]}>
       <GlowBackground
@@ -44,6 +44,8 @@ const styles = StyleSheet.create({
   contentNoPad: {
     padding: 0,
   },
+});
+
 });
 
 export default GlassmorphismPanel;

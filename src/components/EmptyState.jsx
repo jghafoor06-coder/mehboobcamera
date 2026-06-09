@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { colors, borderRadius, typography, spacing } from '../theme';
 
-const EmptyState = ({
+const EmptyState = React.memo(({
   icon = '📭',
   title = 'Nothing here yet',
   subtitle = '',
@@ -85,6 +85,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: typography.fontSize.md * typography.lineHeight.relaxed,
   },
+});
+
 });
 
 export default EmptyState;

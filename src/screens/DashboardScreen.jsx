@@ -161,7 +161,7 @@ const DashboardScreen = ({ navigation }) => {
           </View>
           <View style={styles.headerRight}>
             <View style={styles.avatarBadge}>
-              <Text style={styles.avatarText}>CR</Text>
+              <Text style={styles.avatarText}>HMC</Text>
             </View>
           </View>
         </Animated.View>

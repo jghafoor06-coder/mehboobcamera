@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { colors, borderRadius, shadows } from '../theme';
 
-const FloatingActionButton = ({ onPress, icon = '+', style }) => {
+const FloatingActionButton = React.memo(({ onPress, icon = '+', style }) => {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -115,6 +115,8 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     marginTop: -2,
   },
+});
+
 });
 
 export default FloatingActionButton;

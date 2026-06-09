@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -17,7 +17,7 @@ const statusColors = {
   overdue: { bg: '#EF444420', text: '#EF4444', dot: '#EF4444' },
 };
 
-const RentalCard = ({ rental, onPress, index = 0 }) => {
+const RentalCard = React.memo(({ rental, onPress, index = 0 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
@@ -238,6 +238,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: colors.textTertiary,
   },
+});
+
 });
 
 export default RentalCard;

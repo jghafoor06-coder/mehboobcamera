@@ -10,7 +10,7 @@ import { colors, borderRadius, typography, spacing, shadows } from '../theme';
 import { getInitials, tierColors, formatDate, computeTier } from '../utils/formatters';
 import GlowBackground from './GlowBackground';
 
-const CustomerCard = ({ customer, onPress, index = 0 }) => {
+const CustomerCard = React.memo(({ customer, onPress, index = 0 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -216,6 +216,8 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginLeft: spacing.sm,
   },
+});
+
 });
 
 export default CustomerCard;

@@ -14,6 +14,7 @@ import AddRentalScreen from '../screens/AddRentalScreen';
 import InventoryScreen from '../screens/InventoryScreen';
 import AddItemScreen from '../screens/AddItemScreen';
 import RentalDetailScreen from '../screens/RentalDetailScreen';
+import EquipmentDetailsScreen from '../screens/EquipmentDetailsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -132,6 +133,7 @@ function RootStack() {
       <Stack.Screen name="CustomerProfile" component={CustomerProfileScreen} />
       <Stack.Screen name="AddRental" component={AddRentalScreen} />
       <Stack.Screen name="AddItem" component={AddItemScreen} />
+      <Stack.Screen name="EquipmentDetails" component={EquipmentDetailsScreen} />
       <Stack.Screen name="RentalDetail" component={RentalDetailScreen} />
     </Stack.Navigator>
   );

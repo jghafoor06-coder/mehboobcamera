@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { colors, borderRadius, typography, spacing, shadows } from '../theme';
 
-const PrimaryButton = ({
+const PrimaryButton = React.memo(({
   title,
   onPress,
   variant = 'primary',
@@ -196,6 +196,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     zIndex: 1,
   },
+});
+
 });
 
 export default PrimaryButton;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -81,6 +81,7 @@ const AddRentalScreen = ({ route, navigation }) => {
   const [availabilityMap, setAvailabilityMap] = useState({});
   const [prefetchedRentals, setPrefetchedRentals] = useState({});
   const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const availabilityCheckRef = useRef(null);
 
   const today = new Date();
   const defaultEnd = new Date(today);
@@ -147,17 +148,20 @@ const AddRentalScreen = ({ route, navigation }) => {
     setCheckingAvailability(false);
   }, [selectedItems, startDate, endDate, rentalSlot, quantities, prefetchedRentals]);
 
-  // Re-check availability when dates, slot, quantities, or selected items change
+  // Debounced availability check: only re-check after a 300ms pause to avoid rapid re-fetches
   useEffect(() => {
-    checkAllAvailability();
-  }, [startDate, endDate, rentalSlot, selectedItems.length]);
-
-  // Also check when a specific quantity changes (debounced via the map check)
-  useEffect(() => {
-    if (Object.keys(availabilityMap).length > 0) {
-      checkAllAvailability();
+    if (availabilityCheckRef.current) {
+      clearTimeout(availabilityCheckRef.current);
     }
-  }, [quantities]);
+    availabilityCheckRef.current = setTimeout(() => {
+      checkAllAvailability();
+    }, 300);
+    return () => {
+      if (availabilityCheckRef.current) {
+        clearTimeout(availabilityCheckRef.current);
+      }
+    };
+  }, [startDate, endDate, rentalSlot, selectedItems.length, quantities]);
 
   const toggleItem = item => {
     setSelectedItems(prev => {

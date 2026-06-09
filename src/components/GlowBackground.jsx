@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View } from 'react-native';
 
 /**
@@ -30,7 +30,7 @@ const CORNER_OFFSETS = {
  *
  * @param {Array<{corner: string, color: string, size?: number, opacity?: number, offset?: {top?: number, left?: number, right?: number, bottom?: number}}>} blobs
  */
-const GlowBackground = ({ blobs = [] }) => {
+const GlowBackground = React.memo(({ blobs = [] }) => {
   return (
     <>
       {blobs.map((blob, i) => {
@@ -54,5 +54,7 @@ const GlowBackground = ({ blobs = [] }) => {
     </>
   );
 };
+
+});
 
 export default GlowBackground;

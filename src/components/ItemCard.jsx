@@ -26,7 +26,7 @@ const categoryColors = {
   Accessories: '#EF4444',
 };
 
-const ItemCard = ({
+const ItemCard = React.memo(({
   item,
   onPress,
   onLongPress,
@@ -74,6 +74,12 @@ const ItemCard = ({
   const catColor = categoryColors[item.category] || colors.primary;
   const icon = categoryIcons[item.category] || '📦';
   const inStock = (item.quantity ?? 1) > 0;
+  // Real-time availability from availabilityMap (passed via _available/_total)
+  const liveAvailable = item._available;
+  const liveTotal = item._total;
+  const hasLiveData = liveAvailable != null && liveTotal != null;
+  const availPct = hasLiveData && liveTotal > 0 ? liveAvailable / liveTotal : null;
+  const availColor = availPct == null ? colors.textTertiary : availPct > 0.5 ? '#10B981' : availPct > 0 ? '#F59E0B' : '#EF4444';
 
   return (
     <Animated.View
@@ -140,7 +146,7 @@ const ItemCard = ({
                 style={[
                   styles.availabilityBadge,
                   {
-                    backgroundColor: item.available ? '#10B98120' : '#EF444420',
+                    backgroundColor: availColor + '20',
                   },
                 ]}
               >
@@ -148,7 +154,7 @@ const ItemCard = ({
                   style={[
                     styles.availabilityDot,
                     {
-                      backgroundColor: item.available ? '#10B981' : '#EF4444',
+                      backgroundColor: availColor,
                     },
                   ]}
                 />
@@ -156,11 +162,11 @@ const ItemCard = ({
                   style={[
                     styles.availabilityText,
                     {
-                      color: item.available ? '#10B981' : '#EF4444',
+                      color: availColor,
                     },
                   ]}
                 >
-                  {item.available ? 'Available' : 'Rented'}
+                  {hasLiveData ? `${liveAvailable}/${liveTotal} Available` : (item.available ? 'Available' : 'Rented')}
                 </Text>
               </View>
             </View>
@@ -180,7 +186,7 @@ const ItemCard = ({
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

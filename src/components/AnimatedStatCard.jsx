@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, memo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,7 +9,7 @@ import { colors, borderRadius, typography, spacing, shadows } from '../theme';
 import { formatCurrency } from '../utils/formatters';
 import GlowBackground from './GlowBackground';
 
-const AnimatedStatCard = ({
+const AnimatedStatCard = React.memo(({
   title,
   value,
   subtitle,
@@ -22,7 +22,10 @@ const AnimatedStatCard = ({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const countAnim = useRef(new Animated.Value(0)).current;
+  const displayValueRef = useRef(0);
   const [displayValue, setDisplayValue] = useState(0);
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
   useEffect(() => {
     Animated.parallel([
@@ -40,7 +43,8 @@ const AnimatedStatCard = ({
       }),
     ]).start();
 
-    // Animate counter
+    // Animate counter - use a ref to avoid stale closure issues
+    countAnim.setValue(0);
     Animated.timing(countAnim, {
       toValue: 1,
       duration: 1500,
@@ -49,7 +53,11 @@ const AnimatedStatCard = ({
     }).start();
 
     const listener = countAnim.addListener(({ value: animValue }) => {
-      setDisplayValue(Math.round(animValue * value));
+      const nextVal = Math.round(animValue * valueRef.current);
+      if (nextVal !== displayValueRef.current) {
+        displayValueRef.current = nextVal;
+        setDisplayValue(nextVal);
+      }
     });
 
     return () => countAnim.removeListener(listener);
@@ -140,6 +148,8 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: 'rgba(255, 255, 255, 0.6)',
   },
+});
+
 });
 
 export default AnimatedStatCard;

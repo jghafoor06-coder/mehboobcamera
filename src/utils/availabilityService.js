@@ -254,3 +254,49 @@ export const getEquipmentCurrentlyOut = async () => {
     throw error;
   }
 };
+
+// Alias for backward compatibility with spec
+export const checkDateRangeAvailability = checkAvailability;
+
+// ─── FUNCTIONS FOR EQUIPMENT DETAILS ───
+
+/**
+ * Get full availability snapshot for a specific equipment item.
+ * Returns current stock, total capacity, and a snapshot of today's availability.
+ *
+ * @param {string} itemId
+ * @returns {Promise<{item: object, available: number, total: number, booked: number, percentAvailable: number}>}
+ */
+export const getEquipmentAvailability = async (itemId, existingRentals = null) => {
+  try {
+    const itemDoc = await db.collection('items').doc(itemId).get();
+    if (!itemDoc.exists) return null;
+
+    const itemData = { id: itemDoc.id, ...itemDoc.data() };
+    const rentals = existingRentals || (await getRentalsForItem(itemId));
+
+    let totalBooked = 0;
+    for (const rental of rentals) {
+      const rentalItem = (rental.items || []).find((i) => i.itemId === itemId);
+      if (rentalItem) {
+        totalBooked += rentalItem.quantity || 0;
+      }
+    }
+
+    const available = itemData.quantity || 0;
+    const total = available + totalBooked;
+    const percentAvailable = total > 0 ? Math.round((available / total) * 100) : 0;
+
+    return {
+      item: itemData,
+      available,
+      total,
+      booked: totalBooked,
+      percentAvailable,
+    };
+  } catch (error) {
+    console.error('Error getting equipment availability:', error);
+    throw error;
+  }
+};
+
