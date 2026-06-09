@@ -93,7 +93,7 @@ const CustomerProfileScreen = ({ route, navigation }) => {
 
   // Add outstanding balance card if there's any
   if (outstandingBalance > 0) {
-    stats.push({ label: 'Outstanding', value: formatCurrency(outstandingBalance), danger: true });
+    stats.push({ label: 'Remaining', value: formatCurrency(outstandingBalance), danger: true });
   }
 
   const handleEdit = () => {

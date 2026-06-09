@@ -729,7 +729,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   invoiceId: {
-    fontSize: typography.fontSize.xxl,
+    fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
