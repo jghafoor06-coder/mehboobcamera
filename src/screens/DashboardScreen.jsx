@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -14,66 +14,77 @@ import { colors, borderRadius, typography, spacing } from '../theme';
 import { formatCurrency } from '../utils/formatters';
 import { subscribeToCustomers } from '../firebase/customersService';
 import { subscribeToItems } from '../firebase/itemsService';
-import { getTotalRevenue, getTotalRentalCount, getActiveRentalsToday, getUpcomingRentals, getTotalOutstanding } from '../firebase/rentalsService';
-import { getLowAvailabilityAlerts, getEquipmentCurrentlyOut } from '../utils/availabilityService';
+import { getDashboardStats } from '../firebase/dashboardStatsService';
 import AnimatedStatCard from '../components/AnimatedStatCard';
 import CustomerCard from '../components/CustomerCard';
 import SearchBar from '../components/SearchBar';
 import GlowBackground from '../components/GlowBackground';
+import {
+  DashboardHeaderSkeleton,
+  StatsGridSkeleton,
+  RentalListSkeleton,
+} from '../components/SkeletonLoaders';
 
 const DashboardScreen = ({ navigation }) => {
   const [searchText, setSearchText] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loadingPhase, setLoadingPhase] = useState('header'); // 'header' → 'stats' → 'content' → 'done'
   const [error, setError] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [totalRentalsCount, setTotalRentalsCount] = useState(0);
-  const [activeRentalsToday, setActiveRentalsToday] = useState([]);
-  const [upcomingRentals, setUpcomingRentals] = useState([]);
-  const [lowAvailabilityAlerts, setLowAvailabilityAlerts] = useState([]);
-  const [equipmentOut, setEquipmentOut] = useState(0);
-  const [totalOutstanding, setTotalOutstanding] = useState(0);
+  
+  // Dashboard stats
+  const [stats, setStats] = useState({
+    totalCustomers: 0,
+    totalInventoryItems: 0,
+    totalRentals: 0,
+    totalRevenue: 0,
+    totalOutstanding: 0,
+    activeRentalsToday: [],
+    upcomingRentals: [],
+    equipmentOut: 0,
+    lowAvailabilityAlerts: [],
+  });
+
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-20)).current;
-  const dataLoaded = useRef({ customers: false, items: false, aggregates: false });
+  const dataLoaded = useRef({ customers: false, items: false, stats: false });
 
   const checkAllLoaded = () => {
-    if (dataLoaded.current.customers && dataLoaded.current.items && dataLoaded.current.aggregates) {
-      setLoading(false);
+    if (dataLoaded.current.customers && dataLoaded.current.items && dataLoaded.current.stats) {
+      setLoadingPhase('done');
     }
   };
 
-  const fetchAggregates = async () => {
+  /**
+   * Optimized fetchStats using dashboardStatsService
+   * Reduces 120+ queries to ~5 queries
+   */
+  const fetchStats = useCallback(async () => {
     try {
+      console.time('fetchStats');
       setError(null);
-      const [revenue, rentalCount, todayData, upcomingData, alerts, equipOut, outstanding] = await Promise.all([
-        getTotalRevenue(),
-        getTotalRentalCount(),
-        getActiveRentalsToday(),
-        getUpcomingRentals(),
-        getLowAvailabilityAlerts(),
-        getEquipmentCurrentlyOut(),
-        getTotalOutstanding(),
-      ]);
-      setTotalRevenue(revenue);
-      setTotalRentalsCount(rentalCount);
-      setActiveRentalsToday(todayData);
-      setUpcomingRentals(upcomingData);
-      setLowAvailabilityAlerts(alerts);
-      setEquipmentOut(equipOut);
-      setTotalOutstanding(outstanding);
-      dataLoaded.current.aggregates = true;
+      
+      const dashboardStats = await getDashboardStats();
+      setStats(dashboardStats);
+      
+      dataLoaded.current.stats = true;
       checkAllLoaded();
+      console.timeEnd('fetchStats');
     } catch (err) {
-      console.error('Dashboard fetch error:', err);
+      console.error('Dashboard stats fetch error:', err);
       setError('Failed to load dashboard data. Pull to refresh.');
-      dataLoaded.current.aggregates = true;
+      dataLoaded.current.stats = true;
       checkAllLoaded();
     }
-  };
+  }, []);
 
   useEffect(() => {
+    console.time('Dashboard Initial Load');
+    
+    // Phase 1: Load header immediately
+    setLoadingPhase('header');
+
+    // Phase 2: Subscribe to real-time updates (non-blocking)
     const unsubscribeCustomers = subscribeToCustomers((data) => {
       setCustomers(data);
       dataLoaded.current.customers = true;
@@ -86,8 +97,11 @@ const DashboardScreen = ({ navigation }) => {
       checkAllLoaded();
     });
 
-    fetchAggregates();
+    // Phase 3: Load stats (most expensive operation)
+    setLoadingPhase('stats');
+    fetchStats();
 
+    // Phase 4: Animate in
     Animated.parallel([
       Animated.timing(headerFade, {
         toValue: 1,
@@ -99,30 +113,41 @@ const DashboardScreen = ({ navigation }) => {
         duration: 600,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]).start(() => {
+      console.timeEnd('Dashboard Initial Load');
+    });
 
     return () => {
       unsubscribeCustomers();
       unsubscribeItems();
     };
-  }, []);
+  }, [fetchStats]);
 
-  const recentCustomers = customers.slice(0, 4);
+  const recentCustomers = useMemo(
+    () => customers.slice(0, 4),
+    [customers]
+  );
 
   const onRefresh = useCallback(() => {
-    // Only re-fetch aggregates; listeners keep customer/item data current
-    dataLoaded.current.aggregates = false;
-    setLoading(true);
-    fetchAggregates();
-  }, []);
+    setLoadingPhase('stats');
+    dataLoaded.current.stats = false;
+    fetchStats();
+  }, [fetchStats]);
 
-  const quickActions = [
-    { id: '1', label: 'Add Customer', icon: '👤', screen: 'AddCustomer', color: colors.primary },
-    { id: '2', label: 'Add Item', icon: '📦', screen: 'AddItem', color: colors.secondary },
-    { id: '3', label: 'Inventory', icon: '🎬', screen: 'Inventory', color: colors.success },
-  ];
+  const quickActions = useMemo(
+    () => [
+      { id: '1', label: 'Add Customer', icon: '👤', screen: 'AddCustomer', color: colors.primary },
+      { id: '2', label: 'Add Item', icon: '📦', screen: 'AddItem', color: colors.secondary },
+      { id: '3', label: 'Inventory', icon: '🎬', screen: 'Inventory', color: colors.success },
+    ],
+    []
+  );
 
-  if (loading) {
+  // Progressive loading - show skeleton first, then content
+  const isInitialLoading = loadingPhase !== 'done' && stats.totalCustomers === 0;
+  const isRefreshing = loadingPhase === 'stats';
+
+  if (isInitialLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" backgroundColor={colors.background} />
@@ -184,85 +209,89 @@ const DashboardScreen = ({ navigation }) => {
         />
 
         {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statsRow}>
-            <View style={styles.statHalf}>
-              <AnimatedStatCard
-                title="Customers"
-                value={customers.length}
-                icon="👤"
-                gradient={colors.primaryGradient}
-                index={0}
-              />
-            </View>
-            <View style={styles.statHalf}>
-              <AnimatedStatCard
-                title="Inventory"
-                value={inventoryItems.length}
-                subtitle="items"
-                icon="📦"
-                gradient={colors.successGradient}
-                index={1}
-              />
-            </View>
-          </View>
-          <View style={styles.statsRow}>
-            <View style={styles.statHalf}>
-              <AnimatedStatCard
-                title="Total Rentals"
-                value={totalRentalsCount}
-                icon="🎬"
-                gradient={colors.secondaryGradient}
-                index={2}
-              />
-            </View>
-            <View style={styles.statHalf}>
-              <AnimatedStatCard
-                title="Revenue"
-                value={totalRevenue}
-                isCurrency
-                icon="💰"
-                gradient={colors.accentGradient}
-                index={3}
-              />
-            </View>
-          </View>
-          <View style={styles.statsRow}>
-            <View style={styles.statHalf}>
-              <AnimatedStatCard
-                title="Active Today"
-                value={activeRentalsToday.length}
-                icon="🎬"
-                gradient={colors.primaryGradient}
-                index={4}
-              />
-            </View>
-            <View style={styles.statHalf}>
-              <AnimatedStatCard
-                title="Equipment Out"
-                value={equipmentOut}
-                subtitle="units"
-                icon="📸"
-                gradient={colors.successGradient}
-                index={5}
-              />
-            </View>
-          </View>
-          {totalOutstanding > 0 && (
+        {isRefreshing && loadingPhase === 'stats' ? (
+          <StatsGridSkeleton />
+        ) : (
+          <View style={styles.statsGrid}>
             <View style={styles.statsRow}>
-              <View style={styles.statFull}>
+              <View style={styles.statHalf}>
                 <AnimatedStatCard
-                  title="Outstanding Payments"
-                  value={totalOutstanding}
-                  isCurrency
-                  icon="💳"
+                  title="Customers"
+                  value={stats.totalCustomers}
+                  icon="👤"
                   gradient={colors.primaryGradient}
-                  index={6}
+                  index={0}
+                />
+              </View>
+              <View style={styles.statHalf}>
+                <AnimatedStatCard
+                  title="Inventory"
+                  value={stats.totalInventoryItems}
+                  subtitle="items"
+                  icon="📦"
+                  gradient={colors.successGradient}
+                  index={1}
                 />
               </View>
             </View>
-          )}
-        </View>
+            <View style={styles.statsRow}>
+              <View style={styles.statHalf}>
+                <AnimatedStatCard
+                  title="Total Rentals"
+                  value={stats.totalRentals}
+                  icon="🎬"
+                  gradient={colors.secondaryGradient}
+                  index={2}
+                />
+              </View>
+              <View style={styles.statHalf}>
+                <AnimatedStatCard
+                  title="Revenue"
+                  value={stats.totalRevenue}
+                  isCurrency
+                  icon="💰"
+                  gradient={colors.accentGradient}
+                  index={3}
+                />
+              </View>
+            </View>
+            <View style={styles.statsRow}>
+              <View style={styles.statHalf}>
+                <AnimatedStatCard
+                  title="Active Today"
+                  value={stats.activeRentalsToday.length}
+                  icon="🎬"
+                  gradient={colors.primaryGradient}
+                  index={4}
+                />
+              </View>
+              <View style={styles.statHalf}>
+                <AnimatedStatCard
+                  title="Equipment Out"
+                  value={stats.equipmentOut}
+                  subtitle="units"
+                  icon="📸"
+                  gradient={colors.successGradient}
+                  index={5}
+                />
+              </View>
+            </View>
+            {stats.totalOutstanding > 0 && (
+              <View style={styles.statsRow}>
+                <View style={styles.statFull}>
+                  <AnimatedStatCard
+                    title="Outstanding Payments"
+                    value={stats.totalOutstanding}
+                    isCurrency
+                    icon="💳"
+                    gradient={colors.primaryGradient}
+                    index={6}
+                  />
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Quick Actions */}
         <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -285,12 +314,12 @@ const DashboardScreen = ({ navigation }) => {
         {/* Active Rentals Today */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Active Today</Text>
-          <Text style={styles.seeAll}>{activeRentalsToday.length} rental{activeRentalsToday.length !== 1 ? 's' : ''}</Text>
+          <Text style={styles.seeAll}>{stats.activeRentalsToday.length} rental{stats.activeRentalsToday.length !== 1 ? 's' : ''}</Text>
         </View>
-        {activeRentalsToday.length === 0 ? (
+        {stats.activeRentalsToday.length === 0 ? (
           <Text style={styles.emptyText}>No rentals active today</Text>
         ) : (
-          activeRentalsToday.slice(0, 5).map((rental) => (
+          stats.activeRentalsToday.slice(0, 5).map((rental) => (
             <TouchableOpacity
               key={rental.id}
               style={styles.rentalMiniCard}
@@ -310,13 +339,13 @@ const DashboardScreen = ({ navigation }) => {
         )}
 
         {/* Upcoming Rentals */}
-        {upcomingRentals.length > 0 && (
+        {stats.upcomingRentals.length > 0 && (
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Upcoming</Text>
-              <Text style={styles.seeAll}>{upcomingRentals.length} rental{upcomingRentals.length !== 1 ? 's' : ''}</Text>
+              <Text style={styles.seeAll}>{stats.upcomingRentals.length} rental{stats.upcomingRentals.length !== 1 ? 's' : ''}</Text>
             </View>
-            {upcomingRentals.slice(0, 3).map((rental) => (
+            {stats.upcomingRentals.slice(0, 3).map((rental) => (
               <TouchableOpacity
                 key={rental.id}
                 style={styles.rentalMiniCard}

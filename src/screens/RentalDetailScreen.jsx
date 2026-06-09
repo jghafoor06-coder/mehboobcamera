@@ -109,10 +109,6 @@ const RentalDetailScreen = ({ route, navigation }) => {
   };
 
   const handleProceedToConfirm = () => {
-    if (amountPaid === '') {
-      Alert.alert('Invalid Amount', 'Please enter the amount received.');
-      return;
-    }
     if (exceedsTotal) {
       Alert.alert(
         'Invalid Amount',
@@ -409,7 +405,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
               <Text style={styles.modalInputLabel}>Customer Paid</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="Enter amount received"
+                placeholder="Enter amount (0 if no payment)"
                 placeholderTextColor={colors.textMuted}
                 value={amountPaid}
                 onChangeText={t => setAmountPaid(t.replace(/[^0-9]/g, ''))}
@@ -418,7 +414,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
                 autoFocus
               />
             </View>
-            {amountPaid.length > 0 && !exceedsTotal && (
+            {!exceedsTotal && (
               <View style={styles.liveCalcRow}>
                 <Text style={styles.liveCalcLabel}>Remaining Balance</Text>
                 <Text
@@ -441,11 +437,10 @@ const RentalDetailScreen = ({ route, navigation }) => {
             <TouchableOpacity
               style={[
                 styles.modalProceedBtn,
-                (exceedsTotal || amountPaid === '') &&
-                  styles.modalProceedBtnDisabled,
+                exceedsTotal && styles.modalProceedBtnDisabled,
               ]}
               onPress={handleProceedToConfirm}
-              disabled={exceedsTotal || amountPaid === ''}
+              disabled={exceedsTotal}
               activeOpacity={0.8}
             >
               <Text style={styles.modalProceedBtnText}>Continue</Text>

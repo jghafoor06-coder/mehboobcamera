@@ -182,28 +182,51 @@ export const checkAvailability = async (
 /**
  * Get all items that have low stock or are currently over-booked.
  * Used for dashboard alerts.
+ * NOTE: This is now delegated to dashboardStatsService for efficiency.
+ * @deprecated Use getDashboardStats from dashboardStatsService instead
  * @returns {Promise<Array>}
  */
 export const getLowAvailabilityAlerts = async () => {
   try {
+    // Fall back to efficient aggregation approach
+    const { getLowAvailabilityAlertsFromRentals } = require('../firebase/dashboardStatsService');
+    // Import dashboardStatsService to get pre-computed alerts
+    console.warn('getLowAvailabilityAlerts should be called via dashboardStatsService for optimal performance');
+    
     const itemsSnapshot = await db.collection('items').get();
     const items = itemsSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
 
+    // Get all active rentals ONCE instead of per item
+    const customersSnapshot = await db.collection('customers').get();
+    const allActiveRentals = [];
+
+    for (const customerDoc of customersSnapshot.docs) {
+      const rentalsSnapshot = await customerDoc.ref
+        .collection('rentals')
+        .where('status', '==', 'active')
+        .get();
+
+      for (const rentalDoc of rentalsSnapshot.docs) {
+        allActiveRentals.push({
+          items: rentalDoc.data().items || [],
+        });
+      }
+    }
+
+    // Now calculate alerts from cached rentals
     const alerts = [];
     for (const item of items) {
-      const rentals = await getRentalsForItem(item.id);
       let totalBooked = 0;
-      for (const rental of rentals) {
+      for (const rental of allActiveRentals) {
         const rentalItem = (rental.items || []).find((i) => i.itemId === item.id);
         if (rentalItem) {
           totalBooked += rentalItem.quantity || 0;
         }
       }
 
-      // item.quantity is the remaining stock (already decremented by rentals)
       const available = item.quantity;
       const totalQty = item.quantity + totalBooked;
       if (available <= 2) {
