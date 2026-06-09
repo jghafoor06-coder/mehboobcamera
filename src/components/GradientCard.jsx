@@ -107,7 +107,7 @@ const GradientCard = React.memo(({
   }
 
   return content;
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -131,8 +131,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     zIndex: 1,
   },
-});
-
 });
 
 export default GradientCard;

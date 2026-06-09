@@ -18,7 +18,7 @@ const GlassmorphismPanel = React.memo(({ children, style, noPadding = false }) =
       </View>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -44,8 +44,6 @@ const styles = StyleSheet.create({
   contentNoPad: {
     padding: 0,
   },
-});
-
 });
 
 export default GlassmorphismPanel;

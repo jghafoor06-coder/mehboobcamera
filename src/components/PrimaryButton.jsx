@@ -157,7 +157,7 @@ const PrimaryButton = React.memo(({
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -196,8 +196,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     zIndex: 1,
   },
-});
-
 });
 
 export default PrimaryButton;

@@ -14,7 +14,7 @@ import { colors, borderRadius, typography, spacing } from '../theme';
 import { formatCurrency } from '../utils/formatters';
 import { subscribeToCustomers } from '../firebase/customersService';
 import { subscribeToItems } from '../firebase/itemsService';
-import { getTotalRevenue, getTotalRentalCount, getActiveRentalsToday, getUpcomingRentals } from '../firebase/rentalsService';
+import { getTotalRevenue, getTotalRentalCount, getActiveRentalsToday, getUpcomingRentals, getTotalOutstanding } from '../firebase/rentalsService';
 import { getLowAvailabilityAlerts, getEquipmentCurrentlyOut } from '../utils/availabilityService';
 import AnimatedStatCard from '../components/AnimatedStatCard';
 import CustomerCard from '../components/CustomerCard';
@@ -33,6 +33,7 @@ const DashboardScreen = ({ navigation }) => {
   const [upcomingRentals, setUpcomingRentals] = useState([]);
   const [lowAvailabilityAlerts, setLowAvailabilityAlerts] = useState([]);
   const [equipmentOut, setEquipmentOut] = useState(0);
+  const [totalOutstanding, setTotalOutstanding] = useState(0);
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-20)).current;
   const dataLoaded = useRef({ customers: false, items: false, aggregates: false });
@@ -46,13 +47,14 @@ const DashboardScreen = ({ navigation }) => {
   const fetchAggregates = async () => {
     try {
       setError(null);
-      const [revenue, rentalCount, todayData, upcomingData, alerts, equipOut] = await Promise.all([
+      const [revenue, rentalCount, todayData, upcomingData, alerts, equipOut, outstanding] = await Promise.all([
         getTotalRevenue(),
         getTotalRentalCount(),
         getActiveRentalsToday(),
         getUpcomingRentals(),
         getLowAvailabilityAlerts(),
         getEquipmentCurrentlyOut(),
+        getTotalOutstanding(),
       ]);
       setTotalRevenue(revenue);
       setTotalRentalsCount(rentalCount);
@@ -60,6 +62,7 @@ const DashboardScreen = ({ navigation }) => {
       setUpcomingRentals(upcomingData);
       setLowAvailabilityAlerts(alerts);
       setEquipmentOut(equipOut);
+      setTotalOutstanding(outstanding);
       dataLoaded.current.aggregates = true;
       checkAllLoaded();
     } catch (err) {
@@ -157,7 +160,7 @@ const DashboardScreen = ({ navigation }) => {
         >
           <View>
             <Text style={styles.greeting}>Good Evening</Text>
-            <Text style={styles.headerTitle}>CameraRent Pro</Text>
+            <Text style={styles.headerTitle}>MehboobCamera 786</Text>
           </View>
           <View style={styles.headerRight}>
             <View style={styles.avatarBadge}>
@@ -245,6 +248,20 @@ const DashboardScreen = ({ navigation }) => {
               />
             </View>
           </View>
+          {totalOutstanding > 0 && (
+            <View style={styles.statsRow}>
+              <View style={styles.statFull}>
+                <AnimatedStatCard
+                  title="Outstanding Payments"
+                  value={totalOutstanding}
+                  isCurrency
+                  icon="💳"
+                  gradient={colors.primaryGradient}
+                  index={6}
+                />
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Quick Actions */}
@@ -264,35 +281,6 @@ const DashboardScreen = ({ navigation }) => {
             </TouchableOpacity>
           ))}
         </View>
-
-        {/* Low Availability Alerts */}
-        {lowAvailabilityAlerts.length > 0 && (
-          <>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: '#F59E0B' }]}>⚠️ Low Availability</Text>
-              <Text style={styles.seeAll}>{lowAvailabilityAlerts.length} alert{lowAvailabilityAlerts.length > 1 ? 's' : ''}</Text>
-            </View>
-            {lowAvailabilityAlerts.slice(0, 5).map((alert) => (
-              <TouchableOpacity
-                key={alert.itemId}
-                style={styles.alertCard}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('Inventory')}
-              >
-                <View style={[styles.alertDot, {
-                  backgroundColor: alert.critical ? '#EF4444' : '#F59E0B',
-                }]} />
-                <View style={styles.alertInfo}>
-                  <Text style={styles.alertName}>{alert.itemName}</Text>
-                  <Text style={styles.alertDetails}>
-                    {alert.availableQuantity} of {alert.totalQuantity} available · {alert.bookedQuantity} booked
-                  </Text>
-                </View>
-                <Text style={styles.alertArrow}>›</Text>
-              </TouchableOpacity>
-            ))}
-          </>
-        )}
 
         {/* Active Rentals Today */}
         <View style={styles.sectionHeader}>
@@ -424,7 +412,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   headerTitle: {
-    fontSize: typography.fontSize.xxxl,
+    fontSize: typography.fontSize.xxl,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
@@ -456,6 +444,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   statHalf: {
+    flex: 1,
+  },
+  statFull: {
     flex: 1,
   },
   sectionHeader: {

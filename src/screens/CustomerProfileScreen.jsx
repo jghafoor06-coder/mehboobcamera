@@ -83,12 +83,18 @@ const CustomerProfileScreen = ({ route, navigation }) => {
   const tierColor = tierColors[customer.tier] || colors.primary;
   const activeRentalsCount = customerRentals.filter(r => r.status === 'active').length;
   const totalSpent = customerRentals.reduce((sum, r) => sum + r.totalAmount, 0);
+  const outstandingBalance = customerRentals.reduce((sum, r) => sum + (r.remainingBalance || 0), 0);
 
   const stats = [
     { label: 'Total Rentals', value: customerRentals.length.toString() },
     { label: 'Active', value: activeRentalsCount.toString() },
     { label: 'Total Spent', value: formatCurrency(totalSpent) },
   ];
+
+  // Add outstanding balance card if there's any
+  if (outstandingBalance > 0) {
+    stats.push({ label: 'Outstanding', value: formatCurrency(outstandingBalance), danger: true });
+  }
 
   const handleEdit = () => {
     navigation.navigate('AddCustomer', { customer });
@@ -140,8 +146,8 @@ const CustomerProfileScreen = ({ route, navigation }) => {
         {/* Stats Cards */}
         <View style={styles.statsRow}>
           {stats.map((stat, i) => (
-            <View key={i} style={styles.statCard}>
-              <Text style={styles.statValue}>{stat.value}</Text>
+            <View key={i} style={[styles.statCard, stat.danger && { borderColor: colors.error + '40', backgroundColor: colors.error + '08' }]}>
+              <Text style={[styles.statValue, stat.danger && styles.statValueDanger]}>{stat.value}</Text>
               <Text style={styles.statLabel}>{stat.label}</Text>
             </View>
           ))}
@@ -275,6 +281,9 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
     marginBottom: 2,
+  },
+  statValueDanger: {
+    color: colors.errorLight,
   },
   statLabel: {
     fontSize: typography.fontSize.xs,

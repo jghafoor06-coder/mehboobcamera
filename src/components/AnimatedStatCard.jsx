@@ -95,7 +95,7 @@ const AnimatedStatCard = React.memo(({
       </View>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -148,8 +148,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: 'rgba(255, 255, 255, 0.6)',
   },
-});
-
 });
 
 export default AnimatedStatCard;

@@ -118,7 +118,7 @@ const CustomerCard = React.memo(({ customer, onPress, index = 0 }) => {
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -216,8 +216,6 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginLeft: spacing.sm,
   },
-});
-
 });
 
 export default CustomerCard;

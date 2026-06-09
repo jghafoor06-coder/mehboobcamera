@@ -53,8 +53,6 @@ const GlowBackground = React.memo(({ blobs = [] }) => {
       })}
     </>
   );
-};
-
 });
 
 export default GlowBackground;

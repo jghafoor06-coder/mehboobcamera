@@ -111,7 +111,12 @@ export const updateItem = async (itemId, itemData) => {
  */
 export const decrementItemQuantity = async (itemId, amount) => {
   try {
-    await db.collection(COLLECTION).doc(itemId).update({
+    const doc = await db.collection(COLLECTION).doc(itemId).get();
+    if (!doc.exists) {
+      console.warn('Item document not found for decrement:', itemId);
+      return; // Silently skip if item was deleted
+    }
+    await doc.ref.update({
       quantity: firestore.FieldValue.increment(-Math.abs(amount)),
     });
   } catch (error) {
@@ -127,7 +132,12 @@ export const decrementItemQuantity = async (itemId, amount) => {
  */
 export const incrementItemQuantity = async (itemId, amount) => {
   try {
-    await db.collection(COLLECTION).doc(itemId).update({
+    const doc = await db.collection(COLLECTION).doc(itemId).get();
+    if (!doc.exists) {
+      console.warn('Item document not found for increment:', itemId);
+      return; // Silently skip if item was deleted
+    }
+    await doc.ref.update({
       quantity: firestore.FieldValue.increment(Math.abs(amount)),
     });
   } catch (error) {

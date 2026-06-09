@@ -190,14 +190,14 @@ export const getAllRentals = async () => {
 };
 
 /**
- * Update a rental's status.
+ * Update a rental's status with payment information.
  * @param {string} customerId
  * @param {string} rentalId
  * @param {string} status - 'active' | 'returned' | 'overdue'
+ * @param {object} paymentData - { amountPaid: number, remainingBalance: number, paymentStatus: string }
  */
-export const updateRentalStatus = async (customerId, rentalId, status) => {
+export const updateRentalStatus = async (customerId, rentalId, status, paymentData = null) => {
   try {
-    // Fetch the rental to get its items before updating status
     const rentalRef = db
       .collection(COLLECTION)
       .doc(customerId)
@@ -205,17 +205,38 @@ export const updateRentalStatus = async (customerId, rentalId, status) => {
       .doc(rentalId);
     const rentalDoc = await rentalRef.get();
 
-    await rentalRef.update({
+    if (!rentalDoc.exists) {
+      console.error('Rental document not found:', customerId, rentalId);
+      throw new Error('Rental not found. It may have been deleted.');
+    }
+
+    const rentalData = rentalDoc.data();
+
+    const updateData = {
       status,
       updatedAt: firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    // Add payment fields when returning
+    if (status === 'returned' && paymentData) {
+      updateData.amountPaid = paymentData.amountPaid;
+      updateData.remainingBalance = paymentData.remainingBalance;
+      updateData.paymentStatus = paymentData.paymentStatus;
+      updateData.returnedAt = firestore.FieldValue.serverTimestamp();
+    }
+
+    await rentalRef.update(updateData);
 
     // When a rental is returned, restore stock for each item
-    if (status === 'returned' && rentalDoc.exists) {
-      const rentalData = rentalDoc.data();
+    if (status === 'returned') {
       for (const item of rentalData.items || []) {
         if (item.itemId && item.quantity) {
-          await incrementItemQuantity(item.itemId, item.quantity);
+          try {
+            await incrementItemQuantity(item.itemId, item.quantity);
+          } catch (stockError) {
+            console.warn('Failed to restore stock for item ' + item.itemId + ':', stockError.message);
+            // Non-blocking: stock restore failure shouldn't block the return
+          }
         }
       }
     }
@@ -257,6 +278,102 @@ export const deleteRental = async (customerId, rentalId) => {
     await rentalRef.delete();
   } catch (error) {
     console.error('Error deleting rental:', error);
+    throw error;
+  }
+};
+
+/**
+ * Collect a payment against a returned rental's remaining balance.
+ * Updates the rental document and stores a payment history entry.
+ *
+ * @param {string} customerId
+ * @param {string} rentalId
+ * @param {number} paymentAmount - The amount being collected
+ * @returns {Promise<object>} Updated rental payment data
+ */
+export const collectPayment = async (customerId, rentalId, paymentAmount) => {
+  try {
+    const rentalRef = db
+      .collection(COLLECTION)
+      .doc(customerId)
+      .collection('rentals')
+      .doc(rentalId);
+
+    const rentalDoc = await rentalRef.get();
+    if (!rentalDoc.exists) {
+      throw new Error('Rental not found');
+    }
+
+    const currentData = rentalDoc.data();
+    if (currentData.status !== 'returned') {
+      throw new Error('Can only collect payment on returned rentals');
+    }
+
+    const currentPaid = currentData.amountPaid || 0;
+    const currentRemaining = currentData.remainingBalance || 0;
+    const totalAmount = currentData.totalAmount || 0;
+
+    if (paymentAmount <= 0) {
+      throw new Error('Payment amount must be greater than zero');
+    }
+    if (paymentAmount > currentRemaining) {
+      throw new Error('Payment amount cannot exceed remaining balance');
+    }
+
+    const newAmountPaid = currentPaid + paymentAmount;
+    const newRemainingBalance = currentRemaining - paymentAmount;
+    const newPaymentStatus = newRemainingBalance === 0 ? 'paid' : 'partial';
+
+    // Store payment history entry
+    const paymentsRef = rentalRef.collection('payments');
+    await paymentsRef.add({
+      amount: paymentAmount,
+      date: firestore.FieldValue.serverTimestamp(),
+      type: 'collection',
+    });
+
+    // Update rental document
+    await rentalRef.update({
+      amountPaid: newAmountPaid,
+      remainingBalance: newRemainingBalance,
+      paymentStatus: newPaymentStatus,
+      updatedAt: firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      amountPaid: newAmountPaid,
+      remainingBalance: newRemainingBalance,
+      paymentStatus: newPaymentStatus,
+    };
+  } catch (error) {
+    console.error('Error collecting payment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get the total outstanding balance across all returned rentals with remaining balance > 0.
+ * @returns {Promise<number>}
+ */
+export const getTotalOutstanding = async () => {
+  try {
+    const customersSnapshot = await db.collection(COLLECTION).get();
+    let total = 0;
+    for (const customerDoc of customersSnapshot.docs) {
+      const rentalsSnapshot = await customerDoc.ref
+        .collection('rentals')
+        .where('status', '==', 'returned')
+        .get();
+      for (const rentalDoc of rentalsSnapshot.docs) {
+        const data = rentalDoc.data();
+        if (data.remainingBalance) {
+          total += data.remainingBalance;
+        }
+      }
+    }
+    return total;
+  } catch (error) {
+    console.error('Error calculating total outstanding:', error);
     throw error;
   }
 };

@@ -42,6 +42,8 @@ const RentalCard = React.memo(({ rental, onPress, index = 0 }) => {
   const itemCount = rental.items.length;
   const totalDays = rental.totalDays || rental.items.reduce((sum, item) => sum + (item.days || 1), 0);
   const totalUnits = rental.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
+  const isReturned = rental.status === 'returned';
+  const hasPayment = isReturned && rental.amountPaid != null;
 
   return (
     <Animated.View
@@ -108,13 +110,29 @@ const RentalCard = React.memo(({ rental, onPress, index = 0 }) => {
                 </Text>
               </View>
             </View>
-            <Text style={styles.amount}>{formatCurrency(rental.totalAmount)}</Text>
+            <View>
+              <Text style={styles.amount}>{formatCurrency(rental.totalAmount)}</Text>
+              {hasPayment && (
+                <View style={styles.paymentInfoRow}>
+                  <Text style={[styles.paymentText, {
+                    color: rental.remainingBalance > 0 ? '#F59E0B' : '#10B981',
+                  }]}>
+                    Paid: {formatCurrency(rental.amountPaid)}
+                  </Text>
+                  {rental.remainingBalance > 0 && (
+                    <Text style={styles.paymentRemainingText}>
+                      Remaining: {formatCurrency(rental.remainingBalance)}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
           </View>
         </View>
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -234,12 +252,23 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.accent,
   },
+  paymentInfoRow: {
+    marginTop: 4,
+  },
+  paymentText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  paymentRemainingText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.errorLight,
+    fontWeight: typography.fontWeight.medium,
+    marginTop: 1,
+  },
   arrow: {
     fontSize: 22,
     color: colors.textTertiary,
   },
-});
-
 });
 
 export default RentalCard;

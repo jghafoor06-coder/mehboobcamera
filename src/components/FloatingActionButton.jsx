@@ -74,7 +74,7 @@ const FloatingActionButton = React.memo(({ onPress, icon = '+', style }) => {
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -115,8 +115,6 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     marginTop: -2,
   },
-});
-
 });
 
 export default FloatingActionButton;

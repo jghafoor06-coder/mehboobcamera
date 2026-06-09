@@ -71,7 +71,7 @@ const FloatingLabelInput = React.memo(({ label, value, onChangeText, keyboardTyp
       <View style={[styles.underline, { backgroundColor: isFocused ? colors.primary : colors.border }]} />
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -95,8 +95,6 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
   },
-});
-
 });
 
 export default FloatingLabelInput;

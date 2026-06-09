@@ -49,7 +49,7 @@ const EmptyState = React.memo(({
       {action}
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -85,8 +85,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: typography.fontSize.md * typography.lineHeight.relaxed,
   },
-});
-
 });
 
 export default EmptyState;
