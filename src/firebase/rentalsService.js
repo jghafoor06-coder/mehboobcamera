@@ -1,7 +1,6 @@
 import firestore from '@react-native-firebase/firestore';
 import { db } from './firebaseConfig';
-import { decrementItemQuantity, incrementItemQuantity } from './itemsService';
-
+import { invalidateByPrefix } from '../services/availabilityCache';
 const COLLECTION = 'customers';
 
 /**
@@ -28,18 +27,15 @@ export const createRental = async (customerId, rentalData) => {
         createdAt: firestore.FieldValue.serverTimestamp(),
       });
 
-    // Decrement stock for each rented item
-    for (const item of rentalData.items) {
-      if (item.itemId && item.quantity) {
-        await decrementItemQuantity(item.itemId, item.quantity);
-      }
-    }
-
     // Update customer rental count and last rental date
     await db.collection(COLLECTION).doc(customerId).update({
       rentalCount: firestore.FieldValue.increment(1),
       lastRentalDate: rentalData.startDate,
     });
+
+    // Invalidate cached rental data for affected items
+    const itemIds = (rentalData.items || []).map(i => i.itemId);
+    itemIds.forEach(id => invalidateByPrefix(`rentals:${id}`));
 
     return docRef.id;
   } catch (error) {
@@ -131,7 +127,6 @@ export const getActiveRentals = async () => {
       const customerData = customerDoc.data();
       const rentalsSnapshot = await customerDoc.ref
         .collection('rentals')
-        .where('status', '==', 'active')
         .get();
 
       for (const rentalDoc of rentalsSnapshot.docs) {
@@ -227,19 +222,13 @@ export const updateRentalStatus = async (customerId, rentalId, status, paymentDa
 
     await rentalRef.update(updateData);
 
-    // When a rental is returned, restore stock for each item
-    if (status === 'returned') {
-      for (const item of rentalData.items || []) {
-        if (item.itemId && item.quantity) {
-          try {
-            await incrementItemQuantity(item.itemId, item.quantity);
-          } catch (stockError) {
-            console.warn('Failed to restore stock for item ' + item.itemId + ':', stockError.message);
-            // Non-blocking: stock restore failure shouldn't block the return
-          }
-        }
-      }
-    }
+    // Invalidate cached rental data for affected items
+    const itemIds = (rentalData.items || []).map(i => i.itemId);
+    itemIds.forEach(id => invalidateByPrefix(`rentals:${id}`));
+
+    // NOTE: Stock is not restored on return because availability is now
+    // purely date-driven. The item.quantity field represents TOTAL quantity,
+    // not remaining stock.
   } catch (error) {
     console.error('Error updating rental status:', error);
     throw error;
@@ -260,14 +249,11 @@ export const deleteRental = async (customerId, rentalId) => {
       .doc(rentalId);
     const rentalDoc = await rentalRef.get();
 
-    // Restore stock for each item before deleting
+    // Invalidate cached rental data for affected items
     if (rentalDoc.exists) {
       const rentalData = rentalDoc.data();
-      for (const item of rentalData.items || []) {
-        if (item.itemId && item.quantity) {
-          await incrementItemQuantity(item.itemId, item.quantity);
-        }
-      }
+      const itemIds = (rentalData.items || []).map(i => i.itemId);
+      itemIds.forEach(id => invalidateByPrefix(`rentals:${id}`));
     }
 
     // Decrement the customer's rental count when deleting
@@ -379,7 +365,7 @@ export const getTotalOutstanding = async () => {
 };
 
 /**
- * Fetch active rentals where today falls within startDate and endDate.
+ * Fetch rentals active today based on date overlap (not Firestore status).
  * @returns {Array} Array of rental objects with customerName attached.
  */
 export const getActiveRentalsToday = async () => {
@@ -390,10 +376,8 @@ export const getActiveRentalsToday = async () => {
     const todayRentals = [];
 
     for (const customerDoc of customersSnapshot.docs) {
-      const customerData = customerDoc.data();
-      const rentalsSnapshot = await customerDoc.ref
+      const customerData = customerDoc.data();        const rentalsSnapshot = await customerDoc.ref
         .collection('rentals')
-        .where('status', '==', 'active')
         .get();
 
       for (const rentalDoc of rentalsSnapshot.docs) {
@@ -423,7 +407,8 @@ export const getActiveRentalsToday = async () => {
 };
 
 /**
- * Fetch rentals where startDate is after today (upcoming).
+ * Fetch rentals with a future start date (upcoming).
+ * Uses date overlap — NOT Firestore status.
  * @returns {Array} Array of rental objects with customerName attached.
  */
 export const getUpcomingRentals = async () => {
@@ -437,7 +422,6 @@ export const getUpcomingRentals = async () => {
       const customerData = customerDoc.data();
       const rentalsSnapshot = await customerDoc.ref
         .collection('rentals')
-        .where('status', '==', 'active')
         .get();
 
       for (const rentalDoc of rentalsSnapshot.docs) {

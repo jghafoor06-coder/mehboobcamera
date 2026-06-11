@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows } from '../theme';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { RENTAL_SLOTS } from '../utils/availabilityService';
+import { RENTAL_SLOTS, getRentalLifecycleStatus } from '../utils/availabilityService';
 import {
   updateRentalStatus,
   deleteRental,
@@ -22,9 +22,9 @@ import GlassmorphismPanel from '../components/GlassmorphismPanel';
 import GlowBackground from '../components/GlowBackground';
 
 const statusColors = {
-  active: { bg: '#10B98120', text: '#10B981', dot: '#10B981' },
-  returned: { bg: '#6B728020', text: '#9CA3AF', dot: '#6B7280' },
-  overdue: { bg: '#EF444420', text: '#EF4444', dot: '#EF4444' },
+  upcoming: { bg: '#6366F120', text: '#6366F1', dot: '#6366F1' },
+  ongoing: { bg: '#10B98120', text: '#10B981', dot: '#10B981' },
+  completed: { bg: '#6B728020', text: '#9CA3AF', dot: '#6B7280' },
 };
 
 const paymentStatusColors = {
@@ -71,7 +71,8 @@ const RentalDetailScreen = ({ route, navigation }) => {
     );
   }
 
-  const status = statusColors[rental.status] || statusColors.active;
+  const lifecycleStatus = getRentalLifecycleStatus(rental.startDate, rental.endDate, rental.status);
+  const status = statusColors[lifecycleStatus] || statusColors.ongoing;
   const totalDays =
     rental.totalDays ||
     rental.items.reduce((sum, item) => sum + (item.days || 1), 0);
@@ -80,8 +81,8 @@ const RentalDetailScreen = ({ route, navigation }) => {
     0,
   );
   const isActive = rental.status === 'active';
-  const isReturned = rental.status === 'returned';
-  const hasRemainingBalance = isReturned && (rental.remainingBalance || 0) > 0;
+  const isCompleted = lifecycleStatus === 'completed';
+  const hasRemainingBalance = isCompleted && (rental.remainingBalance || 0) > 0;
   const totalAmount = rental.totalAmount;
   const paidNum = parseInt(amountPaid, 10) || 0;
   const remaining = Math.max(0, totalAmount - paidNum);
@@ -163,7 +164,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
   };
 
   const paymentStatusStyle =
-    isReturned && rental.paymentStatus
+    isCompleted && rental.paymentStatus
       ? paymentStatusColors[rental.paymentStatus] || paymentStatusColors.unpaid
       : null;
 
@@ -210,7 +211,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
                 style={[styles.statusDotLarge, { backgroundColor: status.dot }]}
               />
               <Text style={[styles.statusTextLarge, { color: status.text }]}>
-                {rental.status.toUpperCase()}
+                {lifecycleStatus.toUpperCase()}
               </Text>
             </View>
           </View>
@@ -276,7 +277,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
             </View>
           </View>
         </GlassmorphismPanel>
-        {isReturned && rental.amountPaid != null && (
+        {isCompleted && rental.amountPaid != null && (
           <GlassmorphismPanel style={styles.section}>
             <Text style={styles.sectionLabel}>PAYMENT SUMMARY</Text>
             <View style={styles.infoRow}>

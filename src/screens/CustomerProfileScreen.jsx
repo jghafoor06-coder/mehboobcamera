@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { formatCurrency, formatDate, getInitials, tierColors } from '../utils/formatters';
+import { getRentalLifecycleStatus } from '../utils/availabilityService';
 import { getCustomerById, deleteCustomer } from '../firebase/customersService';
 import { subscribeToRentals } from '../firebase/rentalsService';
 import GlassmorphismPanel from '../components/GlassmorphismPanel';
@@ -81,7 +82,10 @@ const CustomerProfileScreen = ({ route, navigation }) => {
   }
 
   const tierColor = tierColors[customer.tier] || colors.primary;
-  const activeRentalsCount = customerRentals.filter(r => r.status === 'active').length;
+  const activeRentalsCount = customerRentals.filter(r => {
+    const status = getRentalLifecycleStatus(r.startDate, r.endDate, r.status);
+    return status === 'ongoing';
+  }).length;
   const totalSpent = customerRentals.reduce((sum, r) => sum + r.totalAmount, 0);
   const outstandingBalance = customerRentals.reduce((sum, r) => sum + (r.remainingBalance || 0), 0);
 

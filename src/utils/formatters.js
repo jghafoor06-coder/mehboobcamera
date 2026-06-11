@@ -1,4 +1,5 @@
 export const formatCurrency = (amount) => {
+  if (amount == null) return 'PKR 0';
   return `PKR ${amount.toLocaleString()}`;
 };
 
@@ -35,7 +36,9 @@ export const computeTier = (rentalCount) => {
 };
 
 export const formatCompactDate = (date) => {
+  if (!date) return '-';
   const d = new Date(date);
+  if (isNaN(d.getTime())) return '-';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d.getDate()} ${months[d.getMonth()]}`;
 };

@@ -3,14 +3,8 @@ import { db } from './firebaseConfig';
 /**
  * OPTIMIZED Dashboard Statistics Service
  * 
- * Instead of making 100+ Firestore queries, this service:
- * 1. Fetches customers once
- * 2. Fetches items once
- * 3. Loops through customers once to aggregate all rental data
- * 4. Calculates all dashboard stats from this single data fetch
- * 
- * Reduces query count from ~120 to 2-3 queries.
- * Performance improvement: 40-60 seconds → 2-5 seconds
+ * Uses date-based overlap for ALL availability calculations.
+ * Rental status is NOT used to determine availability — only dates matter.
  */
 
 /**
@@ -40,12 +34,9 @@ export const getDashboardStats = async () => {
     // Phase 2: Single loop through customers to collect all rentals
     console.time('Rental Aggregation');
     const allRentals = [];
-    const rentalsByCustomer = {}; // Cache for quick lookups
 
     for (const customer of customers) {
-      const rentalsSnapshot = await customer.ref
-        ? db.collection('customers').doc(customer.id).collection('rentals').get()
-        : await db.collection('customers').doc(customer.id).collection('rentals').get();
+      const rentalsSnapshot = await db.collection('customers').doc(customer.id).collection('rentals').get();
 
       const customerRentals = rentalsSnapshot.docs.map(doc => ({
         id: doc.id,
@@ -58,7 +49,6 @@ export const getDashboardStats = async () => {
       }));
 
       allRentals.push(...customerRentals);
-      rentalsByCustomer[customer.id] = customerRentals;
     }
     console.timeEnd('Rental Aggregation');
 
@@ -80,65 +70,74 @@ export const getDashboardStats = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Calculate revenue, outstanding, and categorize rentals
+    // Calculate revenue, outstanding, and categorize rentals by date only
     for (const rental of allRentals) {
       // Revenue
       if (rental.totalAmount) {
         stats.totalRevenue += rental.totalAmount;
       }
 
-      // Outstanding payments
-      if (rental.status === 'returned' && rental.remainingBalance) {
+      // Outstanding payments (always based on payment data, not status)
+      if (rental.remainingBalance > 0) {
         stats.totalOutstanding += rental.remainingBalance;
       }
 
-      // Active today
-      if (rental.status === 'active') {
+      // Active today: rent date range covers today regardless of status
+      const rentalStart = new Date(rental.startDate);
+      const rentalEnd = new Date(rental.endDate);
+      rentalStart.setHours(0, 0, 0, 0);
+      rentalEnd.setHours(23, 59, 59, 999);
+
+      if (today >= rentalStart && today <= rentalEnd) {
+        stats.activeRentalsToday.push(rental);
+      } else if (rentalStart > today) {
+        // Upcoming: start date is in the future
+        stats.upcomingRentals.push(rental);
+      }
+
+      // Equipment out: sum quantities of rentals active today (date overlap)
+      if (today >= rentalStart && today <= rentalEnd) {
+        const rentalItems = rental.items || [];
+        for (const item of rentalItems) {
+          stats.equipmentOut += item.quantity || 0;
+        }
+      }
+    }
+
+    // Low availability alerts: check future bookings for each item
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const itemAlerts = {};
+    for (const item of items) {
+      const totalQty = item.quantity || 0;
+      
+      // Calculate booked quantity for tomorrow
+      let tomorrowBooked = 0;
+      for (const rental of allRentals) {
         const rentalStart = new Date(rental.startDate);
         const rentalEnd = new Date(rental.endDate);
         rentalStart.setHours(0, 0, 0, 0);
         rentalEnd.setHours(23, 59, 59, 999);
 
-        if (today >= rentalStart && today <= rentalEnd) {
-          stats.activeRentalsToday.push(rental);
-        } else if (rentalStart > today) {
-          // Upcoming
-          stats.upcomingRentals.push(rental);
-        }
-      }
-
-      // Equipment out
-      const rentalItems = rental.items || [];
-      for (const item of rentalItems) {
-        stats.equipmentOut += item.quantity || 0;
-      }
-    }
-
-    // Low availability alerts
-    const itemAlerts = {};
-    for (const item of items) {
-      let totalBooked = 0;
-      
-      for (const rental of allRentals) {
-        if (rental.status === 'active') {
+        if (tomorrow >= rentalStart && tomorrow <= rentalEnd) {
           const rentalItem = (rental.items || []).find(i => i.itemId === item.id);
           if (rentalItem) {
-            totalBooked += rentalItem.quantity || 0;
+            tomorrowBooked += rentalItem.quantity || 0;
           }
         }
       }
 
-      const available = item.quantity || 0;
-      const totalQty = available + totalBooked;
+      const availableTomorrow = Math.max(0, totalQty - tomorrowBooked);
 
-      if (available <= 2) {
+      if (availableTomorrow <= 2) {
         itemAlerts[item.id] = {
           itemId: item.id,
           itemName: item.name,
           totalQuantity: totalQty,
-          bookedQuantity: totalBooked,
-          availableQuantity: Math.max(0, available),
-          critical: available <= 0,
+          bookedQuantity: tomorrowBooked,
+          availableQuantity: availableTomorrow,
+          critical: availableTomorrow <= 0,
         };
       }
     }
@@ -159,7 +158,6 @@ export const getDashboardStats = async () => {
 
 /**
  * Get only the essential stats for the dashboard header (faster subset).
- * Use this if you want even faster initial render.
  * @returns {Promise<object>}
  */
 export const getDashboardHeaderStats = async () => {

@@ -8,13 +8,13 @@ import {
 } from 'react-native';
 import { colors, borderRadius, typography, spacing, shadows } from '../theme';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { RENTAL_SLOTS } from '../utils/availabilityService';
+import { RENTAL_SLOTS, getRentalLifecycleStatus } from '../utils/availabilityService';
 import GlowBackground from './GlowBackground';
 
 const statusColors = {
-  active: { bg: '#10B98120', text: '#10B981', dot: '#10B981' },
-  returned: { bg: '#6B728020', text: '#9CA3AF', dot: '#6B7280' },
-  overdue: { bg: '#EF444420', text: '#EF4444', dot: '#EF4444' },
+  upcoming: { bg: '#6366F120', text: '#6366F1', dot: '#6366F1' },
+  ongoing: { bg: '#10B98120', text: '#10B981', dot: '#10B981' },
+  completed: { bg: '#6B728020', text: '#9CA3AF', dot: '#6B7280' },
 };
 
 const RentalCard = React.memo(({ rental, onPress, index = 0 }) => {
@@ -38,11 +38,12 @@ const RentalCard = React.memo(({ rental, onPress, index = 0 }) => {
     ]).start();
   }, []);
 
-  const status = statusColors[rental.status] || statusColors.active;
+  const lifecycleStatus = getRentalLifecycleStatus(rental.startDate, rental.endDate, rental.status);
+  const status = statusColors[lifecycleStatus] || statusColors.ongoing;
   const itemCount = rental.items.length;
   const totalDays = rental.totalDays || rental.items.reduce((sum, item) => sum + (item.days || 1), 0);
   const totalUnits = rental.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
-  const isReturned = rental.status === 'returned';
+  const isReturned = lifecycleStatus === 'completed';
   const hasPayment = isReturned && rental.amountPaid != null;
 
   return (
@@ -74,7 +75,7 @@ const RentalCard = React.memo(({ rental, onPress, index = 0 }) => {
               <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
                 <View style={[styles.statusDot, { backgroundColor: status.dot }]} />
                 <Text style={[styles.statusText, { color: status.text }]}>
-                  {rental.status.charAt(0).toUpperCase() + rental.status.slice(1)}
+                  {lifecycleStatus.charAt(0).toUpperCase() + lifecycleStatus.slice(1)}
                 </Text>
               </View>
             </View>

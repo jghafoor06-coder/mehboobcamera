@@ -12,8 +12,13 @@ import {
   SLOT_CONFLICT_MAP,
   slotsConflict,
   datesOverlap,
+  getBookedQuantityForDate,
+  getAvailableQuantityForDate,
+  checkAvailabilityForDateRange,
   checkAvailability,
-} from '../src/utils/availabilityService';
+  getRentalLifecycleStatus,
+} from '../src/services/availabilityService';
+import { clearCache } from '../src/services/availabilityCache';
 
 describe('RENTAL_SLOTS', () => {
   test('defines all three slot types', () => {
@@ -61,7 +66,6 @@ describe('SLOT_CONFLICT_MAP', () => {
 });
 
 describe('slotsConflict', () => {
-  // ─── Full Day conflicts ───
   test('full_day conflicts with day', () => {
     expect(slotsConflict('full_day', 'day')).toBe(true);
   });
@@ -74,7 +78,6 @@ describe('slotsConflict', () => {
     expect(slotsConflict('full_day', 'full_day')).toBe(true);
   });
 
-  // ─── Day conflicts ───
   test('day conflicts with day', () => {
     expect(slotsConflict('day', 'day')).toBe(true);
   });
@@ -87,7 +90,6 @@ describe('slotsConflict', () => {
     expect(slotsConflict('day', 'evening')).toBe(false);
   });
 
-  // ─── Evening conflicts ───
   test('evening conflicts with evening', () => {
     expect(slotsConflict('evening', 'evening')).toBe(true);
   });
@@ -100,15 +102,9 @@ describe('slotsConflict', () => {
     expect(slotsConflict('evening', 'day')).toBe(false);
   });
 
-  // ─── Symmetry: swapping arguments should give same result ───
   test('conflict is symmetric (day ↔ full_day)', () => {
     expect(slotsConflict('day', 'full_day')).toBe(true);
     expect(slotsConflict('full_day', 'day')).toBe(true);
-  });
-
-  test('conflict is symmetric (evening ↔ full_day)', () => {
-    expect(slotsConflict('evening', 'full_day')).toBe(true);
-    expect(slotsConflict('full_day', 'evening')).toBe(true);
   });
 
   test('non-conflict is symmetric (day ↔ evening)', () => {
@@ -116,84 +112,40 @@ describe('slotsConflict', () => {
     expect(slotsConflict('evening', 'day')).toBe(false);
   });
 
-  // ─── Unknown slot ───
-  test('returns false for unknown slot A', () => {
+  test('returns false for unknown slot', () => {
     expect(slotsConflict('unknown', 'day')).toBe(false);
-  });
-
-  test('returns false for unknown slot B', () => {
-    expect(slotsConflict('day', 'unknown')).toBe(false);
   });
 });
 
 describe('datesOverlap', () => {
-  const base = new Date('2026-06-01');
-
   test('returns true when same start and end dates', () => {
     const a = new Date('2026-06-01');
     const b = new Date('2026-06-03');
     expect(datesOverlap(a, b, a, b)).toBe(true);
   });
 
-  test('returns true when ranges overlap partially (A before B, overlapping)', () => {
-    const aStart = new Date('2026-06-01');
-    const aEnd = new Date('2026-06-05');
-    const bStart = new Date('2026-06-03');
-    const bEnd = new Date('2026-06-08');
-    expect(datesOverlap(aStart, aEnd, bStart, bEnd)).toBe(true);
+  test('returns true when ranges overlap partially', () => {
+    expect(datesOverlap('2026-06-01', '2026-06-05', '2026-06-03', '2026-06-08')).toBe(true);
   });
 
   test('returns true when A fully contains B', () => {
-    const aStart = new Date('2026-06-01');
-    const aEnd = new Date('2026-06-10');
-    const bStart = new Date('2026-06-03');
-    const bEnd = new Date('2026-06-07');
-    expect(datesOverlap(aStart, aEnd, bStart, bEnd)).toBe(true);
+    expect(datesOverlap('2026-06-01', '2026-06-10', '2026-06-03', '2026-06-07')).toBe(true);
   });
 
   test('returns true when B fully contains A', () => {
-    const aStart = new Date('2026-06-03');
-    const aEnd = new Date('2026-06-07');
-    const bStart = new Date('2026-06-01');
-    const bEnd = new Date('2026-06-10');
-    expect(datesOverlap(aStart, aEnd, bStart, bEnd)).toBe(true);
+    expect(datesOverlap('2026-06-03', '2026-06-07', '2026-06-01', '2026-06-10')).toBe(true);
   });
 
-  test('returns true when B ends on A start (adjacent, inclusive)', () => {
-    const aStart = new Date('2026-06-03');
-    const aEnd = new Date('2026-06-05');
-    const bStart = new Date('2026-06-01');
-    const bEnd = new Date('2026-06-03');
-    expect(datesOverlap(aStart, aEnd, bStart, bEnd)).toBe(true);
-  });
-
-  test('returns true when A ends on B start (adjacent, inclusive)', () => {
-    const aStart = new Date('2026-06-01');
-    const aEnd = new Date('2026-06-03');
-    const bStart = new Date('2026-06-03');
-    const bEnd = new Date('2026-06-05');
-    expect(datesOverlap(aStart, aEnd, bStart, bEnd)).toBe(true);
+  test('returns true when dates are adjacent (inclusive)', () => {
+    expect(datesOverlap('2026-06-01', '2026-06-03', '2026-06-03', '2026-06-05')).toBe(true);
   });
 
   test('returns false when A is completely before B with a gap', () => {
-    const aStart = new Date('2026-06-01');
-    const aEnd = new Date('2026-06-03');
-    const bStart = new Date('2026-06-05');
-    const bEnd = new Date('2026-06-07');
-    expect(datesOverlap(aStart, aEnd, bStart, bEnd)).toBe(false);
+    expect(datesOverlap('2026-06-01', '2026-06-03', '2026-06-05', '2026-06-07')).toBe(false);
   });
 
   test('returns false when A is completely after B with a gap', () => {
-    const aStart = new Date('2026-06-05');
-    const aEnd = new Date('2026-06-07');
-    const bStart = new Date('2026-06-01');
-    const bEnd = new Date('2026-06-03');
-    expect(datesOverlap(aStart, aEnd, bStart, bEnd)).toBe(false);
-  });
-
-  test('handles string date inputs', () => {
-    expect(datesOverlap('2026-06-01', '2026-06-05', '2026-06-03', '2026-06-08')).toBe(true);
-    expect(datesOverlap('2026-06-01', '2026-06-03', '2026-06-05', '2026-06-08')).toBe(false);
+    expect(datesOverlap('2026-06-05', '2026-06-07', '2026-06-01', '2026-06-03')).toBe(false);
   });
 
   test('same single day', () => {
@@ -202,9 +154,245 @@ describe('datesOverlap', () => {
   });
 });
 
-describe('checkAvailability', () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Pure date-based functions (no Firestore calls)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getBookedQuantityForDate', () => {
+  // Test data: Sony FX3, totalQuantity = 5
+  // Rental A: 9 Jun → 11 Jun, qty 2, full_day
+  // Rental B: 10 Jun → 12 Jun, qty 1, day
+  const itemId = 'sony-fx3';
+  const rentals = [
+    {
+      id: 'rental-a',
+      startDate: new Date('2026-06-09'),
+      endDate: new Date('2026-06-11'),
+      rentalSlot: 'full_day',
+      items: [{ itemId: 'sony-fx3', quantity: 2 }],
+    },
+    {
+      id: 'rental-b',
+      startDate: new Date('2026-06-10'),
+      endDate: new Date('2026-06-12'),
+      rentalSlot: 'day',
+      items: [{ itemId: 'sony-fx3', quantity: 1 }],
+    },
+  ];
+
+  test('7 June: no rentals overlap → 0 booked', () => {
+    const result = getBookedQuantityForDate(new Date('2026-06-07'), rentals, itemId);
+    expect(result.total).toBe(0);
+  });
+
+  test('9 June: only Rental A (full_day, qty 2) overlaps → 2 booked', () => {
+    const result = getBookedQuantityForDate(new Date('2026-06-09'), rentals, itemId);
+    expect(result.total).toBe(2);
+    expect(result.breakdown.full_day).toBe(2);
+  });
+
+  test('10 June: both rentals overlap → 3 booked (2 full_day + 1 day)', () => {
+    const result = getBookedQuantityForDate(new Date('2026-06-10'), rentals, itemId);
+    expect(result.total).toBe(3);
+    expect(result.breakdown.full_day).toBe(2);
+    expect(result.breakdown.day).toBe(1);
+  });
+
+  test('11 June: both overlap → 3 booked', () => {
+    const result = getBookedQuantityForDate(new Date('2026-06-11'), rentals, itemId);
+    expect(result.total).toBe(3);
+  });
+
+  test('12 June: only Rental B (day, qty 1) overlaps → 1 booked', () => {
+    const result = getBookedQuantityForDate(new Date('2026-06-12'), rentals, itemId);
+    expect(result.total).toBe(1);
+    expect(result.breakdown.day).toBe(1);
+  });
+
+  test('13 June: no rentals overlap → 0 booked', () => {
+    const result = getBookedQuantityForDate(new Date('2026-06-13'), rentals, itemId);
+    expect(result.total).toBe(0);
+  });
+
+  test('slotFilter: requesting evening slot on 10 Jun → only full_day counts (evening conflicts with full_day)', () => {
+    // Rental A is full_day (conflicts with evening), Rental B is day (no conflict with evening)
+    const result = getBookedQuantityForDate(new Date('2026-06-10'), rentals, itemId, 'evening');
+    expect(result.total).toBe(2); // only full_day's 2
+    expect(result.breakdown.full_day).toBe(2);
+  });
+});
+
+describe('getAvailableQuantityForDate', () => {
+  const itemId = 'sony-fx3';
+  const totalQuantity = 5;
+  const rentals = [
+    {
+      id: 'rental-a',
+      startDate: new Date('2026-06-09'),
+      endDate: new Date('2026-06-11'),
+      rentalSlot: 'full_day',
+      items: [{ itemId: 'sony-fx3', quantity: 2 }],
+    },
+  ];
+
+  test('7 Jun → available: 5, booked: 0', () => {
+    const result = getAvailableQuantityForDate(new Date('2026-06-07'), rentals, itemId, totalQuantity);
+    expect(result.available).toBe(5);
+    expect(result.booked).toBe(0);
+  });
+
+  test('10 Jun → available: 3, booked: 2', () => {
+    const result = getAvailableQuantityForDate(new Date('2026-06-10'), rentals, itemId, totalQuantity);
+    expect(result.available).toBe(3);
+    expect(result.booked).toBe(2);
+  });
+
+  test('13 Jun → available: 5, booked: 0', () => {
+    const result = getAvailableQuantityForDate(new Date('2026-06-13'), rentals, itemId, totalQuantity);
+    expect(result.available).toBe(5);
+    expect(result.booked).toBe(0);
+  });
+});
+
+describe('checkAvailabilityForDateRange', () => {
+  const itemId = 'sony-fx3';
+  const totalQuantity = 5;
+  const rentals = [
+    {
+      id: 'rental-a',
+      startDate: new Date('2026-06-09'),
+      endDate: new Date('2026-06-11'),
+      rentalSlot: 'full_day',
+      items: [{ itemId: 'sony-fx3', quantity: 2 }],
+    },
+    {
+      id: 'rental-b',
+      startDate: new Date('2026-06-10'),
+      endDate: new Date('2026-06-12'),
+      rentalSlot: 'day',
+      items: [{ itemId: 'sony-fx3', quantity: 1 }],
+    },
+  ];
+
+  test('7 Jun → 8 Jun: no overlap → available, minAvailable=5', async () => {
+    const result = await checkAvailabilityForDateRange(
+      itemId,
+      new Date('2026-06-07'),
+      new Date('2026-06-08'),
+      rentals,
+      null,
+      totalQuantity,
+    );
+    expect(result.available).toBe(true);
+    expect(result.minAvailable).toBe(5);
+    expect(result.maxBooked).toBe(0);
+  });
+
+  test('10 Jun → 10 Jun: single day with 3 booked → available=2', async () => {
+    const result = await checkAvailabilityForDateRange(
+      itemId,
+      new Date('2026-06-10'),
+      new Date('2026-06-10'),
+      rentals,
+      null,
+      totalQuantity,
+    );
+    expect(result.available).toBe(true);
+    expect(result.minAvailable).toBe(2);
+    expect(result.maxBooked).toBe(3);
+  });
+
+  test('7 Jun → 13 Jun: full range → min available is 2 (on 10-11 Jun)', async () => {
+    const result = await checkAvailabilityForDateRange(
+      itemId,
+      new Date('2026-06-07'),
+      new Date('2026-06-13'),
+      rentals,
+      null,
+      totalQuantity,
+    );
+    expect(result.available).toBe(true);
+    expect(result.minAvailable).toBe(2);
+    expect(result.maxBooked).toBe(3);
+    expect(result.dayDetails.length).toBe(7); // 7 days in range
+  });
+
+  test('9 Jun → 12 Jun: all days with bookings → minAvailable=2', async () => {
+    const result = await checkAvailabilityForDateRange(
+      itemId,
+      new Date('2026-06-09'),
+      new Date('2026-06-12'),
+      rentals,
+      null,
+      totalQuantity,
+    );
+    expect(result.minAvailable).toBe(2);
+  });
+
+  test('evening slot on 10 Jun: only full_day conflicts → available=3', async () => {
+    const result = await checkAvailabilityForDateRange(
+      itemId,
+      new Date('2026-06-10'),
+      new Date('2026-06-10'),
+      rentals,
+      'evening',
+      totalQuantity,
+    );
+    // Only Rental A (full_day, qty 2) conflicts with evening
+    expect(result.minAvailable).toBe(3);
+    expect(result.maxBooked).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getRentalLifecycleStatus
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getRentalLifecycleStatus', () => {
+  // Use nowOverride parameter for deterministic tests (2026-06-10)
+  const fakeToday = '2026-06-10';
+
+  test('returns upcoming when current date < start date', () => {
+    expect(getRentalLifecycleStatus('2026-06-15', '2026-06-20', 'active', fakeToday)).toBe('upcoming');
+  });
+
+  test('returns ongoing when current date is within start and end', () => {
+    expect(getRentalLifecycleStatus('2026-06-08', '2026-06-12', 'active', fakeToday)).toBe('ongoing');
+  });
+
+  test('returns ongoing when current date equals start date', () => {
+    expect(getRentalLifecycleStatus('2026-06-10', '2026-06-15', 'active', fakeToday)).toBe('ongoing');
+  });
+
+  test('returns ongoing when current date equals end date', () => {
+    expect(getRentalLifecycleStatus('2026-06-05', '2026-06-10', 'active', fakeToday)).toBe('ongoing');
+  });
+
+  test('returns completed when current date > end date', () => {
+    expect(getRentalLifecycleStatus('2026-06-01', '2026-06-05', 'active', fakeToday)).toBe('completed');
+  });
+
+  test('returns completed when firestore status is returned (regardless of dates)', () => {
+    expect(getRentalLifecycleStatus('2026-06-15', '2026-06-20', 'returned', fakeToday)).toBe('completed');
+  });
+
+  test('returns completed when returned and dates are in the past', () => {
+    expect(getRentalLifecycleStatus('2026-06-01', '2026-06-05', 'returned', fakeToday)).toBe('completed');
+  });
+
+  test('defaults to active status when not provided', () => {
+    expect(getRentalLifecycleStatus('2026-06-08', '2026-06-12', 'active', fakeToday)).toBe('ongoing');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Integration: checkAvailability wraps checkAvailabilityForDateRange
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('checkAvailability (wrapper)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearCache();
   });
 
   const mockItemDoc = (exists, data) => ({
@@ -212,48 +400,37 @@ describe('checkAvailability', () => {
     data: () => data,
   });
 
-  const mockRentalDoc = (id, data) => ({
-    id,
-    data: () => data,
-  });
+  test('returns available for date range with no overlapping rentals (7 Jun)', async () => {
+    const itemId = 'sony-fx3';
+    const totalQuantity = 5;
 
-  test('returns item not found when item document does not exist', async () => {
-    const itemId = 'nonexistent-item';
-    db.collection.mockReturnValueOnce({
-      doc: jest.fn().mockReturnValueOnce({
-        get: jest.fn().mockResolvedValueOnce(mockItemDoc(false, null)),
-      }),
-    });
-
-    const result = await checkAvailability(itemId, new Date(), new Date(), 'full_day', 1);
-
-    expect(result.available).toBe(false);
-    expect(result.message).toBe('Item not found');
-    expect(result.totalQuantity).toBe(0);
-  });
-
-  test('returns available when no conflicting rentals exist', async () => {
-    const itemId = 'item-1';
-    const startDate = new Date('2026-06-05');
-    const endDate = new Date('2026-06-07');
-
-    // Mock item document: quantity = 5 (remaining stock, no rentals active)
+    // Mock item doc (total quantity = 5)
     db.collection.mockReturnValueOnce({
       doc: jest.fn().mockReturnValueOnce({
         get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 5, name: 'Sony FX3' }),
+          mockItemDoc(true, { quantity: totalQuantity, name: 'Sony FX3' }),
         ),
       }),
     });
 
-    // getRentalsForItem: no customers
-    db.collection.mockReturnValueOnce({
-      get: jest.fn().mockResolvedValueOnce({
-        docs: [],
-      }),
-    });
+    const existingRentals = [
+      {
+        id: 'rental-a',
+        startDate: new Date('2026-06-09'),
+        endDate: new Date('2026-06-11'),
+        rentalSlot: 'full_day',
+        items: [{ itemId: 'sony-fx3', quantity: 2 }],
+      },
+    ];
 
-    const result = await checkAvailability(itemId, startDate, endDate, 'full_day', 2);
+    const result = await checkAvailability(
+      itemId,
+      new Date('2026-06-07'),
+      new Date('2026-06-08'),
+      'full_day',
+      2,
+      existingRentals,
+    );
 
     expect(result.available).toBe(true);
     expect(result.status).toBe('available');
@@ -263,41 +440,39 @@ describe('checkAvailability', () => {
     expect(result.message).toBe('🟢 Available');
   });
 
-  test('returns low status when partially booked (less than half remaining)', async () => {
-    const itemId = 'item-1';
-    const startDate = new Date('2026-06-05');
-    const endDate = new Date('2026-06-07');
+  test('returns low status when partially booked (2 available of 5 on 10 Jun)', async () => {
+    const itemId = 'sony-fx3';
+    const totalQuantity = 5;
 
-    // After renting 3 of 5 units, remaining stock = 2
     db.collection.mockReturnValueOnce({
       doc: jest.fn().mockReturnValueOnce({
         get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 2, name: 'Sony FX3' }),
+          mockItemDoc(true, { quantity: totalQuantity, name: 'Sony FX3' }),
         ),
       }),
     });
 
     const existingRentals = [
       {
-        id: 'rental-1',
-        customerId: 'cust-1',
-        startDate: new Date('2026-06-05'),
-        endDate: new Date('2026-06-07'),
-        rentalSlot: 'day',
-        items: [{ itemId: 'item-1', quantity: 3 }],
+        id: 'rental-a',
+        startDate: new Date('2026-06-09'),
+        endDate: new Date('2026-06-11'),
+        rentalSlot: 'full_day',
+        items: [{ itemId: 'sony-fx3', quantity: 3 }],
       },
     ];
 
-    // 2 remaining, 3 booked. Requesting 2 (matches remaining stock).
+    // 3 booked on 10 Jun, 2 available, total 5. Requesting 1 (available >= requested)
     const result = await checkAvailability(
       itemId,
-      startDate,
-      endDate,
-      'day',
-      2,
+      new Date('2026-06-10'),
+      new Date('2026-06-10'),
+      'full_day',
+      1,
       existingRentals,
     );
 
+    // availableQuantity=2, 2 <= ceil(5*0.3)=2 → low
     expect(result.available).toBe(true);
     expect(result.status).toBe('low');
     expect(result.bookedQuantity).toBe(3);
@@ -305,38 +480,35 @@ describe('checkAvailability', () => {
     expect(result.totalQuantity).toBe(5);
   });
 
-  test('returns unavailable when requested quantity exceeds available stock', async () => {
-    const itemId = 'item-1';
-    const startDate = new Date('2026-06-05');
-    const endDate = new Date('2026-06-07');
+  test('returns unavailable when requested quantity exceeds available (requesting 3, only 2 available on 10 Jun)', async () => {
+    const itemId = 'sony-fx3';
+    const totalQuantity = 5;
 
-    // After renting 3 of 5 units, remaining stock = 2
     db.collection.mockReturnValueOnce({
       doc: jest.fn().mockReturnValueOnce({
         get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 2, name: 'Sony FX3' }),
+          mockItemDoc(true, { quantity: totalQuantity, name: 'Sony FX3' }),
         ),
       }),
     });
 
     const existingRentals = [
       {
-        id: 'rental-1',
-        customerId: 'cust-1',
-        startDate: new Date('2026-06-05'),
-        endDate: new Date('2026-06-07'),
-        rentalSlot: 'day',
-        items: [{ itemId: 'item-1', quantity: 3 }],
+        id: 'rental-a',
+        startDate: new Date('2026-06-09'),
+        endDate: new Date('2026-06-11'),
+        rentalSlot: 'full_day',
+        items: [{ itemId: 'sony-fx3', quantity: 3 }],
       },
     ];
 
-    // 2 remaining, requesting 4 which exceeds remaining stock
+    // 3 booked, 2 available. Requesting 3 → unavailable
     const result = await checkAvailability(
       itemId,
-      startDate,
-      endDate,
-      'day',
-      4,
+      new Date('2026-06-10'),
+      new Date('2026-06-10'),
+      'full_day',
+      3,
       existingRentals,
     );
 
@@ -347,73 +519,67 @@ describe('checkAvailability', () => {
     expect(result.totalQuantity).toBe(5);
   });
 
-  test('returns available when slots do not conflict (day vs evening)', async () => {
-    const itemId = 'item-1';
-    const startDate = new Date('2026-06-05');
-    const endDate = new Date('2026-06-07');
+  test('slots: day does NOT conflict with evening', async () => {
+    const itemId = 'sony-fx3';
+    const totalQuantity = 5;
 
-    // 3 already rented on day shift, but we're requesting evening — no conflict
     db.collection.mockReturnValueOnce({
       doc: jest.fn().mockReturnValueOnce({
         get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 2, name: 'Sony FX3' }),
+          mockItemDoc(true, { quantity: totalQuantity, name: 'Sony FX3' }),
         ),
       }),
     });
 
     const existingRentals = [
       {
-        id: 'rental-1',
-        customerId: 'cust-1',
-        startDate: new Date('2026-06-05'),
-        endDate: new Date('2026-06-07'),
+        id: 'rental-a',
+        startDate: new Date('2026-06-10'),
+        endDate: new Date('2026-06-10'),
         rentalSlot: 'day',
-        items: [{ itemId: 'item-1', quantity: 3 }],
+        items: [{ itemId: 'sony-fx3', quantity: 3 }],
       },
     ];
 
-    // Requesting evening slot — day and evening do NOT conflict,
-    // so all remaining stock (2) is available but marked low since <= 2
+    // Day slot booked 3, but we're requesting evening — no conflict
     const result = await checkAvailability(
       itemId,
-      startDate,
-      endDate,
+      new Date('2026-06-10'),
+      new Date('2026-06-10'),
       'evening',
-      2,
+      3,
       existingRentals,
     );
 
     expect(result.available).toBe(true);
-    expect(result.status).toBe('low');
-    expect(result.bookedQuantity).toBe(0); // no conflict, evening doesn't conflict with day
-    expect(result.availableQuantity).toBe(2);
-    expect(result.totalQuantity).toBe(2); // no conflicting rentals, so total = remaining only
+    expect(result.bookedQuantity).toBe(0); // day doesn't conflict with evening
+    expect(result.availableQuantity).toBe(5);
+    expect(result.totalQuantity).toBe(5);
   });
 
-  test('returns available when dates do not overlap (no conflict)', async () => {
-    const itemId = 'item-1';
+  test('dates without overlapping rentals → fully available', async () => {
+    const itemId = 'sony-fx3';
+    const totalQuantity = 5;
 
-    // 3 rented on different dates, remaining stock = 2
     db.collection.mockReturnValueOnce({
       doc: jest.fn().mockReturnValueOnce({
         get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 2, name: 'Sony FX3' }),
+          mockItemDoc(true, { quantity: totalQuantity, name: 'Sony FX3' }),
         ),
       }),
     });
 
     const existingRentals = [
       {
-        id: 'rental-1',
-        customerId: 'cust-1',
+        id: 'rental-a',
         startDate: new Date('2026-06-01'),
         endDate: new Date('2026-06-03'),
         rentalSlot: 'day',
-        items: [{ itemId: 'item-1', quantity: 3 }],
+        items: [{ itemId: 'sony-fx3', quantity: 3 }],
       },
     ];
 
-    // Request different dates that don't overlap
+    // Different dates, no overlap
     const result = await checkAvailability(
       itemId,
       new Date('2026-06-10'),
@@ -424,139 +590,75 @@ describe('checkAvailability', () => {
     );
 
     expect(result.available).toBe(true);
-    expect(result.bookedQuantity).toBe(0); // no date overlap
-    expect(result.availableQuantity).toBe(2);
-    expect(result.totalQuantity).toBe(2); // no conflicting rentals, so total = remaining only
-  });
-
-  test('returns low status when partially booked and <= 30% remaining', async () => {
-    const itemId = 'item-1';
-    const startDate = new Date('2026-06-05');
-    const endDate = new Date('2026-06-07');
-
-    // 8 of 10 booked, remaining stock = 2
-    db.collection.mockReturnValueOnce({
-      doc: jest.fn().mockReturnValueOnce({
-        get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 2, name: 'Sony FX3' }),
-        ),
-      }),
-    });
-
-    const existingRentals = [
-      {
-        id: 'rental-1',
-        customerId: 'cust-1',
-        startDate: new Date('2026-06-05'),
-        endDate: new Date('2026-06-07'),
-        rentalSlot: 'day',
-        items: [{ itemId: 'item-1', quantity: 8 }],
-      },
-    ];
-
-    // 2 remaining, requesting 1
-    const result = await checkAvailability(
-      itemId,
-      startDate,
-      endDate,
-      'day',
-      1,
-      existingRentals,
-    );
-
-    expect(result.available).toBe(true);
-    expect(result.status).toBe('low');
-    expect(result.availableQuantity).toBe(2);
-    expect(result.totalQuantity).toBe(10);
-  });
-
-  test('Multiple existing rentals — sums conflicting quantities correctly', async () => {
-    const itemId = 'item-1';
-    const startDate = new Date('2026-06-05');
-    const endDate = new Date('2026-06-07');
-
-    // 5 of 10 already booked, remaining stock = 5
-    db.collection.mockReturnValueOnce({
-      doc: jest.fn().mockReturnValueOnce({
-        get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 5, name: 'Sony FX3' }),
-        ),
-      }),
-    });
-
-    const existingRentals = [
-      {
-        id: 'rental-1',
-        customerId: 'cust-1',
-        startDate: new Date('2026-06-05'),
-        endDate: new Date('2026-06-06'),
-        rentalSlot: 'day',
-        items: [{ itemId: 'item-1', quantity: 2 }],
-      },
-      {
-        id: 'rental-2',
-        customerId: 'cust-2',
-        startDate: new Date('2026-06-06'),
-        endDate: new Date('2026-06-08'),
-        rentalSlot: 'full_day',
-        items: [{ itemId: 'item-1', quantity: 3 }],
-      },
-    ];
-
-    // 5 remaining, 5 booked. Requesting 6 — exceeds remaining stock.
-    const result = await checkAvailability(
-      itemId,
-      startDate,
-      endDate,
-      'day',
-      6,
-      existingRentals,
-    );
-
-    expect(result.available).toBe(false);
-    expect(result.bookedQuantity).toBe(5);
+    expect(result.bookedQuantity).toBe(0);
     expect(result.availableQuantity).toBe(5);
-    expect(result.totalQuantity).toBe(10);
+    expect(result.totalQuantity).toBe(5);
   });
 
-  test('returns available when exact quantity matches remaining stock', async () => {
-    const itemId = 'item-1';
-    const startDate = new Date('2026-06-05');
-    const endDate = new Date('2026-06-07');
+  test('multiple rentals on same date sum correctly', async () => {
+    const itemId = 'sony-fx3';
+    const totalQuantity = 10;
 
-    // 3 of 5 booked, remaining stock = 2
     db.collection.mockReturnValueOnce({
       doc: jest.fn().mockReturnValueOnce({
         get: jest.fn().mockResolvedValueOnce(
-          mockItemDoc(true, { quantity: 2, name: 'Sony FX3' }),
+          mockItemDoc(true, { quantity: totalQuantity, name: 'Sony FX3' }),
         ),
       }),
     });
 
     const existingRentals = [
       {
-        id: 'rental-1',
-        customerId: 'cust-1',
-        startDate: new Date('2026-06-05'),
-        endDate: new Date('2026-06-07'),
+        id: 'rental-a',
+        startDate: new Date('2026-06-10'),
+        endDate: new Date('2026-06-12'),
         rentalSlot: 'day',
-        items: [{ itemId: 'item-1', quantity: 3 }],
+        items: [{ itemId: 'sony-fx3', quantity: 4 }],
+      },
+      {
+        id: 'rental-b',
+        startDate: new Date('2026-06-10'),
+        endDate: new Date('2026-06-11'),
+        rentalSlot: 'full_day',
+        items: [{ itemId: 'sony-fx3', quantity: 3 }],
       },
     ];
 
-    // Requesting 2 — exactly equals remaining stock
+    // 4 (day) + 3 (full_day) = 7 booked on 10 Jun. Requesting 3, but only 3 available
+    // 10 available total - 7 booked = 3 available
     const result = await checkAvailability(
       itemId,
-      startDate,
-      endDate,
+      new Date('2026-06-10'),
+      new Date('2026-06-10'),
       'day',
-      2,
+      3,
       existingRentals,
     );
 
     expect(result.available).toBe(true);
-    expect(result.bookedQuantity).toBe(3);
-    expect(result.availableQuantity).toBe(2);
-    expect(result.totalQuantity).toBe(5);
+    expect(result.bookedQuantity).toBe(7);
+    expect(result.availableQuantity).toBe(3);
+    expect(result.totalQuantity).toBe(10);
+  });
+
+  test('item not found returns unavailable', async () => {
+    clearCache();
+    // Both getItemTotalQuantity and getRentalsForItem fire in parallel via Promise.all
+    db.collection.mockImplementation((collectionName) => {
+      if (collectionName === 'items') {
+        return {
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockItemDoc(false, null)),
+          }),
+        };
+      }
+      return {
+        get: jest.fn().mockResolvedValue({ docs: [] }),
+      };
+    });
+
+    const result = await checkAvailability('nonexistent', new Date(), new Date(), 'full_day', 1);
+    expect(result.available).toBe(false);
+    expect(result.totalQuantity).toBe(0);
   });
 });

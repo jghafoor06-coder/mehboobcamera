@@ -365,7 +365,35 @@ const DashboardScreen = ({ navigation }) => {
           </>
         )}
 
-        {/* Recent Customers */}
+        {/* Low Availability Alerts */}
+        {stats.lowAvailabilityAlerts && stats.lowAvailabilityAlerts.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Low Availability</Text>
+            </View>
+            {stats.lowAvailabilityAlerts.slice(0, 3).map((alert) => (
+              <TouchableOpacity
+                key={alert.itemId}
+                style={styles.alertCard}
+                onPress={() => {
+                  const item = inventoryItems.find(i => i.id === alert.itemId);
+                  if (item) navigation.navigate('EquipmentDetails', { item });
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.alertDot, { backgroundColor: alert.critical ? '#EF4444' : '#F59E0B' }]} />
+                <View style={styles.alertInfo}>
+                  <Text style={styles.alertName}>{alert.itemName}</Text>
+                  <Text style={styles.alertDetails}>
+                    {alert.availableQuantity} left · {alert.bookedQuantity} booked
+                  </Text>
+                </View>
+                <Text style={styles.alertArrow}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Customers</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Customers')}>

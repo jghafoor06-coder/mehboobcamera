@@ -210,26 +210,32 @@ const AddRentalScreen = ({ route, navigation }) => {
   }, 0);
 
   const handleStartDateChange = (event, selectedDate) => {
+    if (event.type === 'dismissed') {
+      setShowStartPicker(false);
+      return;
+    }
+    const currentDate = selectedDate || startDate;
     setShowStartPicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setStartDate(selectedDate);
-      if (selectedDate >= endDate) {
-        const newEnd = new Date(selectedDate);
-        newEnd.setDate(newEnd.getDate() + 1);
-        setEndDate(newEnd);
-      }
+    setStartDate(currentDate);
+    if (currentDate > endDate) {
+      const newEnd = new Date(currentDate);
+      newEnd.setDate(newEnd.getDate() + 1);
+      setEndDate(newEnd);
     }
   };
 
   const handleEndDateChange = (event, selectedDate) => {
-    setShowEndPicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      if (selectedDate <= startDate) {
-        Alert.alert('Invalid Date', 'End date must be after start date.');
-        return;
-      }
-      setEndDate(selectedDate);
+    if (event.type === 'dismissed') {
+      setShowEndPicker(false);
+      return;
     }
+    const currentDate = selectedDate || endDate;
+    setShowEndPicker(Platform.OS === 'ios');
+    if (currentDate < startDate) {
+      Alert.alert('Invalid Date', 'End date must be on or after start date.');
+      return;
+    }
+    setEndDate(currentDate);
   };
 
   const handleSave = async () => {
@@ -350,6 +356,7 @@ const AddRentalScreen = ({ route, navigation }) => {
           <DateTimePicker
             value={startDate}
             mode="date"
+            display="default"
             minimumDate={new Date()}
             onChange={handleStartDateChange}
           />
@@ -359,7 +366,8 @@ const AddRentalScreen = ({ route, navigation }) => {
           <DateTimePicker
             value={endDate}
             mode="date"
-            minimumDate={new Date(startDate.getTime() + 86400000)}
+            display="default"
+            minimumDate={startDate}
             onChange={handleEndDateChange}
           />
         )}

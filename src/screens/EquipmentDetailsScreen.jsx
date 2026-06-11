@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,7 +14,6 @@ import {
   Animated,
   ActivityIndicator,
   Modal,
-  Dimensions,
   RefreshControl,
   TextInput,
 } from 'react-native';
@@ -18,267 +23,206 @@ import {
   getEquipmentAvailability,
   checkAvailability,
   getRentalsForItem,
+  getBookedQuantityForDate,
   RENTAL_SLOTS,
 } from '../utils/availabilityService';
 import GlassmorphismPanel from '../components/GlassmorphismPanel';
 import GlowBackground from '../components/GlowBackground';
 import GradientCard from '../components/GradientCard';
+import AvailabilityCalendar from '../components/AvailabilityCalendar';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TABS = ['Availability', 'Rentals', 'Insights'];
 
 // ─── Category icons/colors ───
-const categoryIcons = { Cameras: '🎬', Lenses: '🔍', Tripods: '📐', Lighting: '💡', Accessories: '🔧' };
-const categoryColors = { Cameras: '#6366F1', Lenses: '#06B6D4', Tripods: '#10B981', Lighting: '#F59E0B', Accessories: '#EF4444' };
+const categoryIcons = {
+  Cameras: '🎬',
+  Lenses: '🔍',
+  Tripods: '📐',
+  Lighting: '💡',
+  Accessories: '🔧',
+};
+const categoryColors = {
+  Cameras: '#6366F1',
+  Lenses: '#06B6D4',
+  Tripods: '#10B981',
+  Lighting: '#F59E0B',
+  Accessories: '#EF4444',
+};
 
-const EquipmentDetailsScreen = ({ route, navigation }) => {
-  const { item: routeItem } = route.params;
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
-  const [item, setItem] = useState(routeItem);
-  const [availability, setAvailability] = useState(null);
-  const [upcomingRentals, setUpcomingRentals] = useState([]);
-  const [utilization, setUtilization] = useState(null);
-  const [timeline, setTimeline] = useState([]);
-
-  // Availability search state
-  const [searchStartDate, setSearchStartDate] = useState('');
-  const [searchEndDate, setSearchEndDate] = useState('');
-  const [searchQty, setSearchQty] = useState('1');
-  const [searchSlot, setSearchSlot] = useState('full_day');
-  const [searchResult, setSearchResult] = useState(null);
-  const [searching, setSearching] = useState(false);
-
-  // Day detail modal
-  const [selectedDay, setSelectedDay] = useState(null);
-  const [dayModalVisible, setDayModalVisible] = useState(false);
-
-  // Tab content fade
-  const contentFade = useRef(new Animated.Value(1)).current;
-
-  // Fetch all data for this item - fetches rentals ONCE and passes them to each function
-  const fetchData = useCallback(async () => {
-    try {
-      const rentalsData = await getRentalsForItem(routeItem.id);
-      const availData = await getEquipmentAvailability(routeItem.id, rentalsData);
-
-      if (availData) {
-        setItem(availData.item);
-        setAvailability(availData);
-      }
-
-      // Use the shared rentals data for all downstream calculations
-      const upcomingData = getUpcomingRentalsForItemFromRentals(rentalsData, routeItem.id);
-      setUpcomingRentals(upcomingData);
-
-      const utilData = calculateUtilizationFromRentals(rentalsData, routeItem.id, availData?.total || 1);
-      setUtilization(utilData);
-
-      const timelineData = generateTimelineFromRentals(rentalsData, routeItem.id, availData?.total || 1);
-      setTimeline(timelineData);
-    } catch (error) {
-      console.error('Error fetching equipment details:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [routeItem.id]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchData();
-  }, [fetchData]);
-
-  // Tab switching animation
-  const switchTab = useCallback((index) => {
-    if (index === activeTab) return;
-    Animated.timing(contentFade, {
-      toValue: 0,
-      duration: 150,
-      useNativeDriver: true,
-    }).start(() => {
-      setActiveTab(index);
-      Animated.timing(contentFade, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    });
-  }, [activeTab, contentFade]);
-
-  // Check availability for a date range
-  const handleCheckAvailability = useCallback(async () => {
-    if (!searchStartDate || !searchEndDate) return;
-    setSearching(true);
-    try {
-      const result = await checkAvailability(
-        routeItem.id,
-        new Date(searchStartDate),
-        new Date(searchEndDate),
-        searchSlot,
-        parseInt(searchQty) || 1,
-      );
-      setSearchResult(result);
-    } catch (error) {
-      console.error('Error checking availability:', error);
-    } finally {
-      setSearching(false);
-    }
-  }, [routeItem.id, searchStartDate, searchEndDate, searchSlot, searchQty]);
-
-  // Memoize availability color to avoid recalculation on every render
-  const availabilityColor = useMemo(() => {
-    if (!availability) return colors.textTertiary;
-    if (availability.percentAvailable > 50) return colors.success;
-    if (availability.percentAvailable > 0) return colors.warning;
-    return colors.error;
-  }, [availability]);
-
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading equipment details...</Text>
-      </View>
-    );
-  }
-
-  const catColor = useMemo(() => categoryColors[item.category] || colors.primary, [item.category]);
-  const catIcon = useMemo(() => categoryIcons[item.category] || '📦', [item.category]);
+// ─── Day Slot Usage (Modal helper) ───
+const DaySlotUsage = ({ day }) => {
+  if (!day) return null;
+  const dayBooked = day.slotBreakdown?.day || 0;
+  const eveningBooked = day.slotBreakdown?.evening || 0;
+  const fullDayBooked = day.slotBreakdown?.full_day || 0;
+  const fullDayUsage =
+    day.total > 0 ? Math.round((day.booked / day.total) * 100) : 0;
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      >
-        {/* ─── Back Button ─── */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
+    <View style={styles.slotUsageContainer}>
+      <View style={styles.slotUsageRow}>
+        <Text style={styles.slotUsageLabel}>Day</Text>
+        <Text style={styles.slotUsageValue}>{dayBooked} booked</Text>
+      </View>
+      <View style={styles.slotUsageRow}>
+        <Text style={styles.slotUsageLabel}>Evening</Text>
+        <Text style={styles.slotUsageValue}>{eveningBooked} booked</Text>
+      </View>
+      <View style={styles.slotUsageRow}>
+        <Text style={styles.slotUsageLabel}>Full Day</Text>
+        <Text style={styles.slotUsageValue}>{fullDayBooked} booked</Text>
+      </View>
+      <View style={styles.modalDivider} />
+      <View style={styles.slotUsageRow}>
+        <Text style={styles.slotUsageLabel}>Total Usage</Text>
+        <Text
+          style={[
+            styles.slotUsageValue,
+            {
+              color:
+                fullDayUsage >= 100
+                  ? colors.error
+                  : fullDayUsage >= 50
+                  ? colors.warning
+                  : colors.success,
+            },
+          ]}
         >
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-
-        {/* ─── Equipment Header ─── */}
-        <View style={styles.headerSection}>
-          <View style={[styles.headerGlow, { backgroundColor: catColor + '15' }]} />
-          <View style={[styles.categoryIconWrap, { backgroundColor: catColor + '20' }]}>
-            <Text style={styles.categoryIcon}>{catIcon}</Text>
-          </View>
-          <Text style={styles.equipmentName} numberOfLines={2}>{item.name}</Text>
-          <Text style={styles.equipmentCategory}>{item.category}</Text>
-
-          <View style={styles.headerStats}>
-            <View style={styles.headerStat}>
-              <Text style={styles.headerStatValue}>{formatCurrency(item.pricePerDay)}</Text>
-              <Text style={styles.headerStatLabel}>/day</Text>
-            </View>
-            <View style={styles.headerStatDivider} />
-            <View style={styles.headerStat}>
-              <Text style={styles.headerStatValue}>{availability?.total || item.quantity || 0}</Text>
-              <Text style={styles.headerStatLabel}>Total Units</Text>
-            </View>
-          </View>
-
-          {/* ─── Quick Availability Badge ─── */}
-          <View style={[styles.quickBadge, { backgroundColor: availabilityColor + '18', borderColor: availabilityColor + '40' }]}>
-            <View style={[styles.quickBadgeDot, { backgroundColor: availabilityColor }]} />
-            <Text style={[styles.quickBadgeText, { color: availabilityColor }]}>
-              Available Now: {availability?.available || item.quantity || 0} / {availability?.total || item.quantity || 0}
-            </Text>
-          </View>
-        </View>
-
-        {/* ─── Segmented Tabs ─── */}
-        <View style={styles.tabBar}>
-          <View style={styles.tabContainer}>
-            {TABS.map((tab, index) => (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.tab, activeTab === index && styles.tabActive]}
-                onPress={() => switchTab(index)}
-                activeOpacity={0.8}
-              >
-                {activeTab === index && <View style={styles.tabGlow} />}
-                <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.tabBarLine} />
-        </View>
-
-        {/* ─── Tab Content ─── */}
-        <Animated.View style={[styles.tabContent, { opacity: contentFade }]}>
-          {activeTab === 0 && renderAvailabilityTab()}
-          {activeTab === 1 && renderRentalsTab()}
-          {activeTab === 2 && renderInsightsTab()}
-        </Animated.View>
-      </ScrollView>
-
-      {/* ─── Day Detail Modal ─── */}
-      <Modal
-        visible={dayModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDayModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setDayModalVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            {selectedDay && (
-              <>
-                <Text style={styles.modalDate}>
-                  {selectedDay.dayNumber} {selectedDay.month}
-                </Text>
-                <View style={styles.modalStats}>
-                  <View style={styles.modalStat}>
-                    <Text style={styles.modalStatValue}>{selectedDay.booked}</Text>
-                    <Text style={styles.modalStatLabel}>Booked</Text>
-                  </View>
-                  <View style={styles.modalStat}>
-                    <Text style={[styles.modalStatValue, { color: availabilityColor }]}>{selectedDay.available}</Text>
-                    <Text style={styles.modalStatLabel}>Available</Text>
-                  </View>
-                  <View style={styles.modalStat}>
-                    <Text style={styles.modalStatValue}>{selectedDay.total}</Text>
-                    <Text style={styles.modalStatLabel}>Total</Text>
-                  </View>
-                </View>
-                <View style={styles.modalDivider} />
-                <Text style={styles.modalSectionTitle}>Slot Usage</Text>
-                {renderDaySlotUsage(selectedDay)}
-              </>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+          {fullDayUsage}%
+        </Text>
+      </View>
+      <View style={styles.usageBarBg}>
+        <View
+          style={[
+            styles.usageBarFill,
+            {
+              width: `${fullDayUsage}%`,
+              backgroundColor:
+                fullDayUsage >= 100
+                  ? colors.error
+                  : fullDayUsage >= 50
+                  ? colors.warning
+                  : colors.success,
+            },
+          ]}
+        />
+      </View>
     </View>
   );
+};
 
-  // ─── AVAILABILITY TAB ───
-  function renderAvailabilityTab() {
+// ─── Rental List Item (memoized) ───
+const RentalListItem = React.memo(({ rental }) => (
+  <View style={styles.rentalCard}>
+    <GlowBackground
+      blobs={[
+        { corner: 'topLeft', color: colors.primary, size: 100, opacity: 0.03 },
+      ]}
+    />
+    <View style={styles.rentalCardInner}>
+      <View style={styles.rentalCardHeader}>
+        <Text style={styles.rentalCustomerName} numberOfLines={1}>
+          {rental.customerName}
+        </Text>
+        <View
+          style={[
+            styles.rentalStatusBadge,
+            {
+              backgroundColor:
+                rental.rentalStatus === 'active'
+                  ? colors.success + '20'
+                  : rental.rentalStatus === 'upcoming'
+                  ? colors.primary + '20'
+                  : colors.textTertiary + '20',
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.rentalStatusText,
+              {
+                color:
+                  rental.rentalStatus === 'active'
+                    ? colors.success
+                    : rental.rentalStatus === 'upcoming'
+                    ? colors.primaryLight
+                    : colors.textTertiary,
+              },
+            ]}
+          >
+            {rental.rentalStatus === 'active'
+              ? 'Active'
+              : rental.rentalStatus === 'upcoming'
+              ? 'Upcoming'
+              : 'Completed'}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.rentalDetails}>
+        <View style={styles.rentalDetail}>
+          <Text style={styles.rentalDetailLabel}>📅</Text>
+          <Text style={styles.rentalDetailValue}>
+            {formatCompactDate(rental.startDate)} →{' '}
+            {formatCompactDate(rental.endDate)}
+          </Text>
+        </View>
+        <View style={styles.rentalDetail}>
+          <Text style={styles.rentalDetailLabel}>Qty</Text>
+          <Text style={styles.rentalDetailValue}>{rental.quantity}</Text>
+        </View>
+        <View style={styles.rentalDetail}>
+          <Text style={styles.rentalDetailLabel}>Slot</Text>
+          <Text style={styles.rentalDetailValue}>
+            {RENTAL_SLOTS[rental.rentalSlot]?.label || 'Full Day'}
+          </Text>
+        </View>
+      </View>
+      {rental.rentalStatus === 'upcoming' && (
+        <Text style={styles.rentalCountdown}>
+          Starts in{' '}
+          {Math.max(
+            0,
+            Math.ceil((rental.startDate - new Date()) / (1000 * 60 * 60 * 24)),
+          )}{' '}
+          day(s)
+        </Text>
+      )}
+    </View>
+  </View>
+));
+
+// ─── Availability Tab (extracted + memoized, owns its own search state) ───
+const AvailabilityTab = React.memo(
+  ({ itemId, availability, availabilityColor, timeline, rentals, totalQuantity }) => {
+    const [searchStartDate, setSearchStartDate] = useState('');
+    const [searchEndDate, setSearchEndDate] = useState('');
+    const [searchQty, setSearchQty] = useState('1');
+    const [searchSlot, setSearchSlot] = useState('full_day');
+    const [searchResult, setSearchResult] = useState(null);
+    const [searching, setSearching] = useState(false);
+
+    const [selectedDay, setSelectedDay] = useState(null);
+    const [dayModalVisible, setDayModalVisible] = useState(false);
+
+    const handleCheckAvailability = useCallback(async () => {
+      if (!itemId || !searchStartDate || !searchEndDate) return;
+      setSearching(true);
+      try {
+        const result = await checkAvailability(
+          itemId,
+          new Date(searchStartDate),
+          new Date(searchEndDate),
+          searchSlot,
+          parseInt(searchQty, 10) || 1,
+        );
+        setSearchResult(result);
+      } catch (error) {
+        console.error('Error checking availability:', error);
+      } finally {
+        setSearching(false);
+      }
+    }, [itemId, searchStartDate, searchEndDate, searchSlot, searchQty]);
+
     return (
       <View>
         {/* Search Section */}
@@ -316,7 +260,7 @@ const EquipmentDetailsScreen = ({ route, navigation }) => {
                 placeholder="1"
                 placeholderTextColor={colors.textMuted}
                 value={searchQty}
-                onChangeText={(t) => setSearchQty(t.replace(/[^0-9]/g, ''))}
+                onChangeText={t => setSearchQty(t.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
                 maxLength={3}
               />
@@ -327,11 +271,19 @@ const EquipmentDetailsScreen = ({ route, navigation }) => {
                 {Object.entries(RENTAL_SLOTS).map(([key, val]) => (
                   <TouchableOpacity
                     key={key}
-                    style={[styles.slotChip, searchSlot === key && styles.slotChipActive]}
+                    style={[
+                      styles.slotChip,
+                      searchSlot === key && styles.slotChipActive,
+                    ]}
                     onPress={() => setSearchSlot(key)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.slotChipText, searchSlot === key && styles.slotChipTextActive]}>
+                    <Text
+                      style={[
+                        styles.slotChipText,
+                        searchSlot === key && styles.slotChipTextActive,
+                      ]}
+                    >
                       {val.shortLabel}
                     </Text>
                   </TouchableOpacity>
@@ -340,7 +292,11 @@ const EquipmentDetailsScreen = ({ route, navigation }) => {
             </View>
           </View>
           <TouchableOpacity
-            style={[styles.checkButton, (searching || !searchStartDate || !searchEndDate) && styles.checkButtonDisabled]}
+            style={[
+              styles.checkButton,
+              (searching || !searchStartDate || !searchEndDate) &&
+                styles.checkButtonDisabled,
+            ]}
             onPress={handleCheckAvailability}
             disabled={searching || !searchStartDate || !searchEndDate}
             activeOpacity={0.8}
@@ -355,23 +311,47 @@ const EquipmentDetailsScreen = ({ route, navigation }) => {
 
         {/* Search Result */}
         {searchResult && (
-          <View style={[
-            styles.resultCard,
-            { borderColor: searchResult.available ? colors.success + '40' : colors.error + '40' }
-          ]}>
-            <View style={[
-              styles.resultHeader,
-              { backgroundColor: (searchResult.available ? colors.success : colors.error) + '15' }
-            ]}>
+          <View
+            style={[
+              styles.resultCard,
+              {
+                borderColor: searchResult.available
+                  ? colors.success + '40'
+                  : colors.error + '40',
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.resultHeader,
+                {
+                  backgroundColor:
+                    (searchResult.available ? colors.success : colors.error) +
+                    '15',
+                },
+              ]}
+            >
               <Text style={styles.resultTitle}>Availability Result</Text>
-              <View style={[
-                styles.resultStatusBadge,
-                { backgroundColor: searchResult.available ? colors.success + '20' : colors.error + '20' }
-              ]}>
-                <Text style={[
-                  styles.resultStatusText,
-                  { color: searchResult.available ? colors.success : colors.error }
-                ]}>
+              <View
+                style={[
+                  styles.resultStatusBadge,
+                  {
+                    backgroundColor: searchResult.available
+                      ? colors.success + '20'
+                      : colors.error + '20',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.resultStatusText,
+                    {
+                      color: searchResult.available
+                        ? colors.success
+                        : colors.error,
+                    },
+                  ]}
+                >
                   {searchResult.available ? 'YES' : 'NO'}
                 </Text>
               </View>
@@ -379,7 +359,9 @@ const EquipmentDetailsScreen = ({ route, navigation }) => {
             <View style={styles.resultBody}>
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Dates</Text>
-                <Text style={styles.resultValue}>{searchStartDate} → {searchEndDate}</Text>
+                <Text style={styles.resultValue}>
+                  {searchStartDate} → {searchEndDate}
+                </Text>
               </View>
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Requested Qty</Text>
@@ -387,249 +369,550 @@ const EquipmentDetailsScreen = ({ route, navigation }) => {
               </View>
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Remaining Stock</Text>
-                <Text style={[styles.resultValue, { color: availabilityColor }]}>{searchResult.availableQuantity}</Text>
+                <Text
+                  style={[styles.resultValue, { color: availabilityColor }]}
+                >
+                  {searchResult.availableQuantity}
+                </Text>
               </View>
               {!searchResult.available && (
                 <Text style={styles.resultErrorMessage}>
-                  Only {searchResult.availableQuantity} Unit{searchResult.availableQuantity !== 1 ? 's' : ''} Available
+                  Only {searchResult.availableQuantity} Unit
+                  {searchResult.availableQuantity !== 1 ? 's' : ''} Available
                 </Text>
               )}
             </View>
           </View>
         )}
 
+        {/* Availability Calendar (Full Month Grid) */}
+        <View style={styles.timelineSection}>
+          <Text style={styles.sectionTitle}>Availability Calendar</Text>
+          <Text style={styles.sectionSubtitle}>Full month overview — tap a day for details</Text>
+          <AvailabilityCalendar
+            rentals={rentals}
+            itemId={itemId}
+            totalQuantity={totalQuantity}
+          />
+        </View>
+
         {/* 30-Day Timeline */}
         <View style={styles.timelineSection}>
           <Text style={styles.sectionTitle}>30-Day Availability</Text>
           <Text style={styles.sectionSubtitle}>
-            {timeline.length > 0 ? `${timeline[0]?.month || ''} — ${timeline[timeline.length - 1]?.month || ''}` : ''}
+            {timeline.length > 0
+              ? `${timeline[0]?.month || ''} — ${
+                  timeline[timeline.length - 1]?.month || ''
+                }`
+              : ''}
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timelineScroll}>
-            {timeline.map((day, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.timelineDay}
-                onPress={() => { setSelectedDay(day); setDayModalVisible(true); }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.timelineDayNum}>{day.dayNumber}</Text>
-                <View style={[
-                  styles.timelineDot,
-                  {
-                    backgroundColor:
-                      day.status === 'green' ? colors.success :
-                      day.status === 'orange' ? colors.warning :
-                      colors.error,
-                  },
-                ]} />
-                <Text style={styles.timelineDateLabel}>{day.month}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {timeline.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.timelineScroll}
+            >
+              {timeline.map((day, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.timelineDay}
+                  onPress={() => {
+                    setSelectedDay(day);
+                    setDayModalVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.timelineDayNum}>{day.dayNumber}</Text>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      {
+                        backgroundColor:
+                          day.status === 'green'
+                            ? colors.success
+                            : day.status === 'orange'
+                            ? colors.warning
+                            : colors.error,
+                      },
+                    ]}
+                  />
+                  <Text style={styles.timelineDateLabel}>{day.month}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.timelineLoading}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          )}
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+              <View
+                style={[styles.legendDot, { backgroundColor: colors.success }]}
+              />
               <Text style={styles.legendText}>&gt;50% Available</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
-              <Text style={styles.legendText}>{"≤50%"}</Text>
+              <View
+                style={[styles.legendDot, { backgroundColor: colors.warning }]}
+              />
+              <Text style={styles.legendText}>{'≤50%'}</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
+              <View
+                style={[styles.legendDot, { backgroundColor: colors.error }]}
+              />
               <Text style={styles.legendText}>Fully Booked</Text>
             </View>
           </View>
         </View>
+
+        {/* ─── Day Detail Modal ─── */}
+        <Modal
+          visible={dayModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDayModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setDayModalVisible(false)}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+              <View style={styles.modalHandle} />
+              {selectedDay && (
+                <>
+                  <Text style={styles.modalDate}>
+                    {selectedDay.dayNumber} {selectedDay.month}
+                  </Text>
+                  <View style={styles.modalStats}>
+                    <View style={styles.modalStat}>
+                      <Text style={styles.modalStatValue}>
+                        {selectedDay.booked}
+                      </Text>
+                      <Text style={styles.modalStatLabel}>Booked</Text>
+                    </View>
+                    <View style={styles.modalStat}>
+                      <Text
+                        style={[
+                          styles.modalStatValue,
+                          { color: availabilityColor },
+                        ]}
+                      >
+                        {selectedDay.available}
+                      </Text>
+                      <Text style={styles.modalStatLabel}>Available</Text>
+                    </View>
+                    <View style={styles.modalStat}>
+                      <Text style={styles.modalStatValue}>
+                        {selectedDay.total}
+                      </Text>
+                      <Text style={styles.modalStatLabel}>Total</Text>
+                    </View>
+                  </View>
+                  <View style={styles.modalDivider} />
+                  <Text style={styles.modalSectionTitle}>Slot Usage</Text>
+                  <DaySlotUsage day={selectedDay} />
+                </>
+              )}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    );
+  },
+);
+
+// ─── Rentals Tab (extracted + memoized) ───
+const RentalsTab = React.memo(({ upcomingRentals }) => {
+  if (upcomingRentals.length === 0) {
+    return (
+      <View style={styles.emptyTab}>
+        <Text style={styles.emptyIcon}>📋</Text>
+        <Text style={styles.emptyTitle}>No Upcoming Rentals</Text>
+        <Text style={styles.emptySubtitle}>
+          This equipment has no active or future bookings.
+        </Text>
       </View>
     );
   }
 
-  // ─── RENTALS TAB ───
-  function renderRentalsTab() {
-    if (upcomingRentals.length === 0) {
-      return (
-        <View style={styles.emptyTab}>
-          <Text style={styles.emptyIcon}>📋</Text>
-          <Text style={styles.emptyTitle}>No Upcoming Rentals</Text>
-          <Text style={styles.emptySubtitle}>This equipment has no active or future bookings.</Text>
-        </View>
-      );
-    }
+  return (
+    <View>
+      {upcomingRentals.map((rental, index) => (
+        <RentalListItem key={rental.id || index} rental={rental} />
+      ))}
+    </View>
+  );
+});
 
+// ─── Insights Tab (extracted + memoized) ───
+const InsightsTab = React.memo(({ utilization }) => {
+  if (!utilization) {
     return (
-      <View>
-        {upcomingRentals.map((rental, index) => (
-          <View key={rental.id || index} style={styles.rentalCard}>
-            <GlowBackground
-              blobs={[
-                { corner: 'topLeft', color: colors.primary, size: 100, opacity: 0.03 },
-              ]}
-            />
-            <View style={styles.rentalCardInner}>
-              <View style={styles.rentalCardHeader}>
-                <Text style={styles.rentalCustomerName} numberOfLines={1}>{rental.customerName}</Text>
-                <View style={[
-                  styles.rentalStatusBadge,
+      <View style={styles.emptyTab}>
+        <Text style={styles.emptyIcon}>📊</Text>
+        <Text style={styles.emptyTitle}>No Insights Available</Text>
+        <Text style={styles.emptySubtitle}>
+          Utilization data will appear once rentals are recorded.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <Text style={styles.sectionTitle}>Utilization Overview</Text>
+      <View style={styles.insightsGrid}>
+        <GradientCard borderOnly gradient={colors.primaryGradient}>
+          <View style={styles.insightCard}>
+            <Text style={styles.insightLabel}>Current Utilization</Text>
+            <Text style={[styles.insightValue, { color: colors.primaryLight }]}>
+              {utilization.currentUtilization}%
+            </Text>
+            <View style={styles.insightBarBg}>
+              <View
+                style={[
+                  styles.insightBarFill,
                   {
-                    backgroundColor:
-                      rental.rentalStatus === 'active' ? colors.success + '20' :
-                      rental.rentalStatus === 'upcoming' ? colors.primary + '20' :
-                      colors.textTertiary + '20',
+                    width: `${utilization.currentUtilization}%`,
+                    backgroundColor: colors.primary,
                   },
-                ]}>
-                  <Text style={[
-                    styles.rentalStatusText,
-                    {
-                      color:
-                        rental.rentalStatus === 'active' ? colors.success :
-                        rental.rentalStatus === 'upcoming' ? colors.primaryLight :
-                        colors.textTertiary,
-                    },
-                  ]}>
-                    {rental.rentalStatus === 'active' ? 'Active' :
-                     rental.rentalStatus === 'upcoming' ? 'Upcoming' :
-                     'Completed'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.rentalDetails}>
-                <View style={styles.rentalDetail}>
-                  <Text style={styles.rentalDetailLabel}>📅</Text>
-                  <Text style={styles.rentalDetailValue}>
-                    {formatCompactDate(rental.startDate)} → {formatCompactDate(rental.endDate)}
-                  </Text>
-                </View>
-                <View style={styles.rentalDetail}>
-                  <Text style={styles.rentalDetailLabel}>Qty</Text>
-                  <Text style={styles.rentalDetailValue}>{rental.quantity}</Text>
-                </View>
-                <View style={styles.rentalDetail}>
-                  <Text style={styles.rentalDetailLabel}>Slot</Text>
-                  <Text style={styles.rentalDetailValue}>{RENTAL_SLOTS[rental.rentalSlot]?.label || 'Full Day'}</Text>
-                </View>
-              </View>
-              {rental.rentalStatus === 'upcoming' && (
-                <Text style={styles.rentalCountdown}>
-                  Starts in {Math.max(0, Math.ceil((rental.startDate - new Date()) / (1000 * 60 * 60 * 24)))} day(s)
-                </Text>
-              )}
+                ]}
+              />
             </View>
           </View>
-        ))}
-      </View>
-    );
-  }
+        </GradientCard>
 
-  // ─── INSIGHTS TAB ───
-  function renderInsightsTab() {
-    if (!utilization) {
-      return (
-        <View style={styles.emptyTab}>
-          <Text style={styles.emptyIcon}>📊</Text>
-          <Text style={styles.emptyTitle}>No Insights Available</Text>
-          <Text style={styles.emptySubtitle}>Utilization data will appear once rentals are recorded.</Text>
-        </View>
-      );
+        <GradientCard borderOnly gradient={colors.successGradient}>
+          <View style={styles.insightCard}>
+            <Text style={styles.insightLabel}>Weekly Utilization</Text>
+            <Text style={[styles.insightValue, { color: colors.success }]}>
+              {utilization.weeklyUtilization}%
+            </Text>
+            <View style={styles.insightBarBg}>
+              <View
+                style={[
+                  styles.insightBarFill,
+                  {
+                    width: `${utilization.weeklyUtilization}%`,
+                    backgroundColor: colors.success,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        </GradientCard>
+
+        <GradientCard borderOnly gradient={colors.secondaryGradient}>
+          <View style={styles.insightCard}>
+            <Text style={styles.insightLabel}>Monthly Utilization</Text>
+            <Text style={[styles.insightValue, { color: colors.secondary }]}>
+              {utilization.monthlyUtilization}%
+            </Text>
+            <View style={styles.insightBarBg}>
+              <View
+                style={[
+                  styles.insightBarFill,
+                  {
+                    width: `${utilization.monthlyUtilization}%`,
+                    backgroundColor: colors.secondary,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        </GradientCard>
+      </View>
+
+      <View style={styles.insightStatsRow}>
+        <GlassmorphismPanel style={styles.insightStatCard}>
+          <Text style={styles.insightStatValue}>
+            {utilization.upcomingCount}
+          </Text>
+          <Text style={styles.insightStatLabel}>Upcoming Rentals</Text>
+        </GlassmorphismPanel>
+        <GlassmorphismPanel style={styles.insightStatCard}>
+          <Text style={styles.insightStatValue}>
+            {utilization.mostRequestedSlot}
+          </Text>
+          <Text style={styles.insightStatLabel}>Most Requested Slot</Text>
+        </GlassmorphismPanel>
+      </View>
+    </View>
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Main Component
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const EquipmentDetailsScreen = ({ route, navigation }) => {
+  const routeItem = route?.params?.item;
+  const itemId = routeItem?.id;
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+  const [item, setItem] = useState(routeItem);
+  const [availability, setAvailability] = useState(null);
+  const [upcomingRentals, setUpcomingRentals] = useState([]);
+
+  // Deferred computation: store raw rentals + total quantity in refs
+  const rentalsRef = useRef([]);
+  const totalQuantityRef = useRef(1);
+  const [rentalsVersion, setRentalsVersion] = useState(0);
+
+  // Tab content fade
+  const contentFade = useRef(new Animated.Value(1)).current;
+
+  // Fetch all data for this item — fetches rentals ONCE, computes fast data immediately
+  const fetchData = useCallback(async () => {
+    if (!itemId) {
+      setLoading(false);
+      return;
     }
+    try {
+      const rentalsData = await getRentalsForItem(itemId);
+      const availData = await getEquipmentAvailability(itemId, rentalsData);
 
+      if (availData) {
+        setItem(availData.item);
+        setAvailability(availData);
+      }
+
+      setUpcomingRentals(
+        getUpcomingRentalsForItemFromRentals(rentalsData, itemId),
+      );
+
+      // Store raw rentals for deferred computation (no state update needed)
+      rentalsRef.current = rentalsData;
+      totalQuantityRef.current = availData?.total || 1;
+      setRentalsVersion(v => v + 1);
+    } catch (error) {
+      console.error('Error fetching equipment details:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [itemId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchData();
+  }, [fetchData]);
+
+  // ─── Deferred heavy computations (only run when the tab is active) ───
+  const timeline = useMemo(() => {
+    if (activeTab !== 0 || rentalsVersion === 0) return [];
+    return generateTimelineFromRentals(
+      rentalsRef.current,
+      itemId,
+      totalQuantityRef.current,
+    );
+  }, [activeTab, rentalsVersion, itemId]);
+
+  const utilization = useMemo(() => {
+    if (activeTab !== 2 || rentalsVersion === 0) return null;
+    return calculateUtilizationFromRentals(
+      rentalsRef.current,
+      itemId,
+      totalQuantityRef.current,
+    );
+  }, [activeTab, rentalsVersion, itemId]);
+
+  // Tab switching animation
+  const switchTab = useCallback(
+    index => {
+      if (index === activeTab) return;
+      Animated.timing(contentFade, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start(() => {
+        setActiveTab(index);
+        Animated.timing(contentFade, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      });
+    },
+    [activeTab, contentFade],
+  );
+
+  // Memoize availability color to avoid recalculation on every render
+  const availabilityColor = useMemo(() => {
+    if (!availability) return colors.textTertiary;
+    if (availability.percentAvailable > 50) return colors.success;
+    if (availability.percentAvailable > 0) return colors.warning;
+    return colors.error;
+  }, [availability]);
+
+  const catColor = useMemo(
+    () => categoryColors[item?.category] || colors.primary,
+    [item?.category],
+  );
+  const catIcon = useMemo(
+    () => categoryIcons[item?.category] || '📦',
+    [item?.category],
+  );
+
+  if (loading) {
     return (
-      <View>
-        <Text style={styles.sectionTitle}>Utilization Overview</Text>
-        <View style={styles.insightsGrid}>
-          <GradientCard borderOnly gradient={colors.primaryGradient}>
-            <View style={styles.insightCard}>
-              <Text style={styles.insightLabel}>Current Utilization</Text>
-              <Text style={[styles.insightValue, { color: colors.primaryLight }]}>{utilization.currentUtilization}%</Text>
-              <View style={styles.insightBarBg}>
-                <View style={[styles.insightBarFill, { width: `${utilization.currentUtilization}%`, backgroundColor: colors.primary }]} />
-              </View>
-            </View>
-          </GradientCard>
-
-          <GradientCard borderOnly gradient={colors.successGradient}>
-            <View style={styles.insightCard}>
-              <Text style={styles.insightLabel}>Weekly Utilization</Text>
-              <Text style={[styles.insightValue, { color: colors.success }]}>{utilization.weeklyUtilization}%</Text>
-              <View style={styles.insightBarBg}>
-                <View style={[styles.insightBarFill, { width: `${utilization.weeklyUtilization}%`, backgroundColor: colors.success }]} />
-              </View>
-            </View>
-          </GradientCard>
-
-          <GradientCard borderOnly gradient={colors.secondaryGradient}>
-            <View style={styles.insightCard}>
-              <Text style={styles.insightLabel}>Monthly Utilization</Text>
-              <Text style={[styles.insightValue, { color: colors.secondary }]}>{utilization.monthlyUtilization}%</Text>
-              <View style={styles.insightBarBg}>
-                <View style={[styles.insightBarFill, { width: `${utilization.monthlyUtilization}%`, backgroundColor: colors.secondary }]} />
-              </View>
-            </View>
-          </GradientCard>
-        </View>
-
-        <View style={styles.insightStatsRow}>
-          <GlassmorphismPanel style={styles.insightStatCard}>
-            <Text style={styles.insightStatValue}>{utilization.upcomingCount}</Text>
-            <Text style={styles.insightStatLabel}>Upcoming Rentals</Text>
-          </GlassmorphismPanel>
-          <GlassmorphismPanel style={styles.insightStatCard}>
-            <Text style={styles.insightStatValue}>{utilization.mostRequestedSlot}</Text>
-            <Text style={styles.insightStatLabel}>Most Requested Slot</Text>
-          </GlassmorphismPanel>
-        </View>
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading equipment details...</Text>
       </View>
     );
   }
 
-  // ─── Day Slot Usage (Modal) ───
-  function renderDaySlotUsage(day) {
-    if (!day) return null;
-    const dayBooked = day.slotBreakdown?.day || 0;
-    const eveningBooked = day.slotBreakdown?.evening || 0;
-    const fullDayBooked = day.slotBreakdown?.full_day || 0;
-    const fullDayUsage = day.total > 0 ? Math.round((day.booked / day.total) * 100) : 0;
-
+  if (!itemId) {
     return (
-      <View style={styles.slotUsageContainer}>
-        <View style={styles.slotUsageRow}>
-          <Text style={styles.slotUsageLabel}>Day</Text>
-          <Text style={styles.slotUsageValue}>{dayBooked} booked</Text>
-        </View>
-        <View style={styles.slotUsageRow}>
-          <Text style={styles.slotUsageLabel}>Evening</Text>
-          <Text style={styles.slotUsageValue}>{eveningBooked} booked</Text>
-        </View>
-        <View style={styles.slotUsageRow}>
-          <Text style={styles.slotUsageLabel}>Full Day</Text>
-          <Text style={styles.slotUsageValue}>{fullDayBooked} booked</Text>
-        </View>
-        <View style={styles.modalDivider} />
-        <View style={styles.slotUsageRow}>
-          <Text style={styles.slotUsageLabel}>Total Usage</Text>
-          <Text style={[styles.slotUsageValue, {
-            color: fullDayUsage >= 100 ? colors.error :
-                   fullDayUsage >= 50 ? colors.warning :
-                   colors.success,
-          }]}>{fullDayUsage}%</Text>
-        </View>
-        <View style={styles.usageBarBg}>
-          <View style={[
-            styles.usageBarFill,
-            {
-              width: `${fullDayUsage}%`,
-              backgroundColor: fullDayUsage >= 100 ? colors.error :
-                               fullDayUsage >= 50 ? colors.warning :
-                               colors.success,
-            }
-          ]} />
-        </View>
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.loadingText}>
+          Equipment details are unavailable.
+        </Text>
       </View>
     );
   }
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        {/* ─── Back Button ─── */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.backArrow}>‹</Text>
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+
+        {/* ─── Equipment Header ─── */}
+        <View style={styles.headerSection}>
+          <View
+            style={[styles.headerGlow, { backgroundColor: catColor + '15' }]}
+          />
+          <View
+            style={[
+              styles.categoryIconWrap,
+              { backgroundColor: catColor + '20' },
+            ]}
+          >
+            <Text style={styles.categoryIcon}>{catIcon}</Text>
+          </View>
+          <Text style={styles.equipmentName} numberOfLines={2}>
+            {item?.name ?? 'Unknown Item'}
+          </Text>
+          <Text style={styles.equipmentCategory}>
+            {item?.category ?? 'Unknown Category'}
+          </Text>
+
+          <View style={styles.headerStats}>
+            <View style={styles.headerStat}>
+              <Text style={styles.headerStatValue}>
+                {formatCurrency(item?.pricePerDay ?? 0)}
+              </Text>
+              <Text style={styles.headerStatLabel}>/day</Text>
+            </View>
+            <View style={styles.headerStatDivider} />
+            <View style={styles.headerStat}>
+              <Text style={styles.headerStatValue}>
+                {availability?.total ?? item?.quantity ?? 0}
+              </Text>
+              <Text style={styles.headerStatLabel}>Total Units</Text>
+            </View>
+          </View>
+
+          {/* ─── Quick Availability Badge ─── */}
+          <View
+            style={[
+              styles.quickBadge,
+              {
+                backgroundColor: availabilityColor + '18',
+                borderColor: availabilityColor + '40',
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.quickBadgeDot,
+                { backgroundColor: availabilityColor },
+              ]}
+            />
+            <Text style={[styles.quickBadgeText, { color: availabilityColor }]}>
+              Available Now: {availability?.available ?? item?.quantity ?? 0} /{' '}
+              {availability?.total ?? item?.quantity ?? 0}
+            </Text>
+          </View>
+
+          {/* ─── Segmented Tabs ─── */}
+          <View style={styles.tabBar}>
+            <View style={styles.tabContainer}>
+              {TABS.map((tab, index) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tab, activeTab === index && styles.tabActive]}
+                  onPress={() => switchTab(index)}
+                  activeOpacity={0.8}
+                >
+                  {activeTab === index && <View style={styles.tabGlow} />}
+                  <Text
+                    style={[
+                      styles.tabText,
+                      activeTab === index && styles.tabTextActive,
+                    ]}
+                  >
+                    {tab}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.tabBarLine} />
+          </View>
+        </View>
+
+        {/* ─── Tab Content ─── */}
+        <Animated.View style={[styles.tabContent, { opacity: contentFade }]}>
+          {activeTab === 0 && (
+            <AvailabilityTab
+              itemId={itemId}
+              availability={availability}
+              availabilityColor={availabilityColor}
+              timeline={timeline}
+              rentals={rentalsRef.current}
+              totalQuantity={totalQuantityRef.current}
+            />
+          )}
+          {activeTab === 1 && <RentalsTab upcomingRentals={upcomingRentals} />}
+          {activeTab === 2 && <InsightsTab utilization={utilization} />}
+        </Animated.View>
+      </ScrollView>
+    </View>
+  );
 };
 
-// ─── Pure functions that operate on pre-fetched rentals (no Firestore calls) ───
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pure functions (operate on pre-fetched rentals, no Firestore calls)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function getUpcomingRentalsForItemFromRentals(allRentals, itemId) {
   const today = new Date();
@@ -638,14 +921,14 @@ function getUpcomingRentalsForItemFromRentals(allRentals, itemId) {
   const upcoming = [];
   for (const rental of allRentals) {
     const items = rental.items || [];
-    const hasItem = items.some((i) => i.itemId === itemId);
+    const hasItem = items.some(i => i.itemId === itemId);
     if (!hasItem) continue;
 
     const endDate = rental.endDate;
     endDate.setHours(23, 59, 59, 999);
 
     if (endDate >= today) {
-      const rentalItem = items.find((i) => i.itemId === itemId);
+      const rentalItem = items.find(i => i.itemId === itemId);
       const start = rental.startDate;
       start.setHours(0, 0, 0, 0);
       const now = new Date();
@@ -687,10 +970,10 @@ function calculateUtilizationFromRentals(allRentals, itemId, totalQuantity) {
 
   for (const rental of allRentals) {
     const items = rental.items || [];
-    const hasItem = items.some((i) => i.itemId === itemId);
+    const hasItem = items.some(i => i.itemId === itemId);
     if (!hasItem) continue;
 
-    const rentalItem = items.find((i) => i.itemId === itemId);
+    const rentalItem = items.find(i => i.itemId === itemId);
     const qty = rentalItem?.quantity || 0;
     const start = rental.startDate;
     const end = rental.endDate;
@@ -717,9 +1000,16 @@ function calculateUtilizationFromRentals(allRentals, itemId, totalQuantity) {
     slotCounts[slot] = (slotCounts[slot] || 0) + qty;
   }
 
-  const currentUtilization = totalQuantity > 0 ? Math.round((currentBooked / totalQuantity) * 100) : 0;
-  const weeklyUtilization = totalQuantity > 0 ? Math.min(100, Math.round((weeklyBooked / (totalQuantity * 7)) * 100)) : 0;
-  const monthlyUtilization = totalQuantity > 0 ? Math.min(100, Math.round((monthlyBooked / (totalQuantity * 30)) * 100)) : 0;
+  const currentUtilization =
+    totalQuantity > 0 ? Math.round((currentBooked / totalQuantity) * 100) : 0;
+  const weeklyUtilization =
+    totalQuantity > 0
+      ? Math.min(100, Math.round((weeklyBooked / (totalQuantity * 7)) * 100))
+      : 0;
+  const monthlyUtilization =
+    totalQuantity > 0
+      ? Math.min(100, Math.round((monthlyBooked / (totalQuantity * 30)) * 100))
+      : 0;
 
   // Most requested slot
   let mostRequestedSlot = 'full_day';
@@ -731,12 +1021,12 @@ function calculateUtilizationFromRentals(allRentals, itemId, totalQuantity) {
     }
   }
 
-  const upcomingCount = allRentals.filter((r) => {
-    const hasItem = (r.items || []).some((i) => i.itemId === itemId);
+  const upcomingCount = allRentals.filter(r => {
+    const hasItem = (r.items || []).some(i => i.itemId === itemId);
     if (!hasItem) return false;
-    const start = r.startDate;
+    const start = new Date(r.startDate);
     start.setHours(0, 0, 0, 0);
-    return start >= today && r.status !== 'returned';
+    return start >= today;
   }).length;
 
   return {
@@ -749,12 +1039,25 @@ function calculateUtilizationFromRentals(allRentals, itemId, totalQuantity) {
 }
 
 function generateTimelineFromRentals(allRentals, itemId, totalQuantity) {
-  // Filter to only active rentals that include this item
-  const activeItemRentals = allRentals.filter((r) => {
-    return (r.items || []).some((i) => i.itemId === itemId) && r.status === 'active';
+  // Filter to rentals that include this item (all statuses — date-based only)
+  const itemRentals = allRentals.filter(r => {
+    return (r.items || []).some(i => i.itemId === itemId);
   });
 
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   const days = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -765,8 +1068,7 @@ function generateTimelineFromRentals(allRentals, itemId, totalQuantity) {
     date.setHours(0, 0, 0, 0);
 
     // Calculate booked quantity for this specific date, respecting slot conflicts
-    // full_day conflicts with everything, day conflicts with day+full_day, evening conflicts with evening+full_day
-    const dayBooked = getBookedQtyForDate(date, activeItemRentals, itemId);
+    const dayBooked = getBookedQuantityForDate(date, itemRentals, itemId);
     const available = Math.max(0, totalQuantity - dayBooked.total);
 
     let status = 'green';
@@ -791,48 +1093,9 @@ function generateTimelineFromRentals(allRentals, itemId, totalQuantity) {
   return days;
 }
 
-/**
- * Calculate booked quantity for a specific date, properly handling slot conflicts.
- * full_day uses all capacity. day and evening use separate capacity pools
- * but both conflict with full_day.
- */
-function getBookedQtyForDate(date, rentals, itemId) {
-  let fullDayBooked = 0;
-  let dayBooked = 0;
-  let eveningBooked = 0;
-
-  for (const rental of rentals) {
-    const rentalStart = new Date(rental.startDate);
-    const rentalEnd = new Date(rental.endDate);
-    rentalStart.setHours(0, 0, 0, 0);
-    rentalEnd.setHours(23, 59, 59, 999);
-
-    if (date < rentalStart || date > rentalEnd) continue;
-
-    const rentalItem = (rental.items || []).find((i) => i.itemId === itemId);
-    if (!rentalItem) continue;
-
-    const qty = rentalItem.quantity || 0;
-    const slot = rental.rentalSlot || 'full_day';
-
-    if (slot === 'full_day') {
-      fullDayBooked += qty;
-    } else if (slot === 'day') {
-      dayBooked += qty;
-    } else if (slot === 'evening') {
-      eveningBooked += qty;
-    }
-  }
-
-  // full_day uses full capacity; day+evening together also use full capacity
-  // but they don't conflict with each other
-  const total = fullDayBooked + dayBooked + eveningBooked;
-
-  return {
-    total,
-    breakdown: { full_day: fullDayBooked, day: dayBooked, evening: eveningBooked },
-  };
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// Styles
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
   container: {
@@ -958,7 +1221,8 @@ const styles = StyleSheet.create({
 
   // ─── Tab Bar ───
   tabBar: {
-    marginBottom: spacing.lg,
+    width: '90%',
+    marginTop: spacing.lg,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -1151,6 +1415,10 @@ const styles = StyleSheet.create({
   },
   timelineScroll: {
     paddingRight: spacing.xl,
+  },
+  timelineLoading: {
+    paddingVertical: spacing.xxl,
+    alignItems: 'center',
   },
   timelineDay: {
     alignItems: 'center',
