@@ -11,8 +11,18 @@ import { colors, spacing, typography, borderRadius, shadows } from '../theme';
 import { getBookedQuantityForDate } from '../services/availabilityService';
 
 const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -64,57 +74,76 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
   // Generate calendar grid for current month
   const calendarDays = useMemo(() => {
     const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    const startPadding = firstDay.getDay(); // 0=Sun, 1=Mon, etc.
-    const totalDays = lastDay.getDate();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    const startingWeekday = firstDay.getDay();
 
     const days = [];
 
-    // Padding for days before the 1st
-    for (let i = 0; i < startPadding; i++) {
-      days.push({ empty: true, key: `pad-${i}` });
+    // Leading empty cells
+    for (let i = 0; i < startingWeekday; i++) {
+      days.push({
+        empty: true,
+        key: `leading-${i}`,
+      });
     }
 
-    // Actual days of the month
-    for (let d = 1; d <= totalDays; d++) {
-      const date = new Date(currentYear, currentMonth, d);
-      date.setHours(0, 0, 0, 0);
+    // Month days
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentYear, currentMonth, day, 12, 0, 0, 0);
 
-      const isPast = date < today;
-      const isToday = date.getTime() === today.getTime();
+      const compareDate = new Date(currentYear, currentMonth, day);
 
-      // Calculate availability for this day
-      const booked = getBookedQuantityForDate(date, rentals, itemId);
+      compareDate.setHours(0, 0, 0, 0);
+
+      const isPast = compareDate < today;
+      const isToday = compareDate.getTime() === today.getTime();
+
+      const booked = getBookedQuantityForDate(compareDate, rentals, itemId);
+
       const available = Math.max(0, totalQuantity - booked.total);
 
       let status = 'green';
-      if (totalQuantity > 0) {
-        if (available === 0 || booked.total >= totalQuantity) {
-          status = 'red';
-        } else if (available <= Math.ceil(totalQuantity * 0.5)) {
-          status = 'orange';
-        }
+
+      if (available === 0) {
+        status = 'red';
+      } else if (available <= Math.ceil(totalQuantity / 2)) {
+        status = 'orange';
       }
 
       days.push({
         empty: false,
-        day: d,
-        date,
+        key: `day-${day}`,
+        day,
+        date: compareDate,
         isPast,
         isToday,
-        status,
         booked: booked.total,
         available,
         total: totalQuantity,
         breakdown: booked.breakdown,
-        key: `day-${d}`,
+        status,
       });
     }
 
-    return days;
-  }, [currentYear, currentMonth, rentals, itemId, totalQuantity, today]);
+    // Trailing empty cells
+    const remainingCells = days.length % 7;
 
-  const handleDayPress = useCallback((day) => {
+    if (remainingCells !== 0) {
+      const trailing = 7 - remainingCells;
+
+      for (let i = 0; i < trailing; i++) {
+        days.push({
+          empty: true,
+          key: `trailing-${i}`,
+        });
+      }
+    }
+
+    return days;
+  }, [currentMonth, currentYear, rentals, itemId, totalQuantity, today]);
+
+  const handleDayPress = useCallback(day => {
     if (day.isPast) return;
     setSelectedDay(day);
     setModalVisible(true);
@@ -123,20 +152,28 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
   const getStatusColor = (status, isPast) => {
     if (isPast) return colors.textMuted;
     switch (status) {
-      case 'green': return colors.success;
-      case 'orange': return colors.warning;
-      case 'red': return colors.error;
-      default: return colors.textMuted;
+      case 'green':
+        return colors.success;
+      case 'orange':
+        return colors.warning;
+      case 'red':
+        return colors.error;
+      default:
+        return colors.textMuted;
     }
   };
 
   const getStatusBg = (status, isPast) => {
     if (isPast) return 'rgba(255,255,255,0.02)';
     switch (status) {
-      case 'green': return colors.success + '15';
-      case 'orange': return colors.warning + '15';
-      case 'red': return colors.error + '15';
-      default: return 'transparent';
+      case 'green':
+        return colors.success + '15';
+      case 'orange':
+        return colors.warning + '15';
+      case 'red':
+        return colors.error + '15';
+      default:
+        return 'transparent';
     }
   };
 
@@ -144,21 +181,29 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
     <View style={styles.container}>
       {/* Month Header */}
       <View style={styles.monthHeader}>
-        <TouchableOpacity onPress={goToPrevMonth} style={styles.navButton} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={goToPrevMonth}
+          style={styles.navButton}
+          activeOpacity={0.7}
+        >
           <Text style={styles.navArrow}>‹</Text>
         </TouchableOpacity>
         <View style={styles.monthTitleWrap}>
           <Text style={styles.monthTitle}>{MONTHS[currentMonth]}</Text>
           <Text style={styles.yearTitle}>{currentYear}</Text>
         </View>
-        <TouchableOpacity onPress={goToNextMonth} style={styles.navButton} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={goToNextMonth}
+          style={styles.navButton}
+          activeOpacity={0.7}
+        >
           <Text style={styles.navArrow}>›</Text>
         </TouchableOpacity>
       </View>
 
       {/* Weekday Headers */}
       <View style={styles.weekdayRow}>
-        {WEEKDAYS.map((day) => (
+        {WEEKDAYS.map(day => (
           <View key={day} style={styles.weekdayCell}>
             <Text style={styles.weekdayText}>{day}</Text>
           </View>
@@ -167,7 +212,7 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
 
       {/* Calendar Grid */}
       <View style={styles.grid}>
-        {calendarDays.map((day) => {
+        {calendarDays.map(day => {
           if (day.empty) {
             return <View key={day.key} style={styles.dayCell} />;
           }
@@ -197,7 +242,9 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
                 {day.day}
               </Text>
               {!day.isPast && (
-                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                <View
+                  style={[styles.statusDot, { backgroundColor: statusColor }]}
+                />
               )}
               {day.isToday && <View style={styles.todayIndicator} />}
             </TouchableOpacity>
@@ -208,11 +255,15 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
       {/* Legend */}
       <View style={styles.legendRow}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+          <View
+            style={[styles.legendDot, { backgroundColor: colors.success }]}
+          />
           <Text style={styles.legendText}>Available</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+          <View
+            style={[styles.legendDot, { backgroundColor: colors.warning }]}
+          />
           <Text style={styles.legendText}>Limited</Text>
         </View>
         <View style={styles.legendItem}>
@@ -220,7 +271,9 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
           <Text style={styles.legendText}>Full</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
+          <View
+            style={[styles.legendDot, { backgroundColor: colors.textMuted }]}
+          />
           <Text style={styles.legendText}>Past</Text>
         </View>
       </View>
@@ -242,55 +295,93 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
             {selectedDay && (
               <>
                 <Text style={styles.modalDate}>
-                  {MONTHS[selectedDay.date.getMonth()]} {selectedDay.day}, {selectedDay.date.getFullYear()}
+                  {MONTHS[selectedDay.date.getMonth()]} {selectedDay.day},{' '}
+                  {selectedDay.date.getFullYear()}
                 </Text>
 
                 {/* Status badge */}
-                <View style={[
-                  styles.modalStatusBadge,
-                  {
-                    backgroundColor: getStatusColor(selectedDay.status, false) + '20',
-                    borderColor: getStatusColor(selectedDay.status, false) + '40',
-                  },
-                ]}>
-                  <View style={[styles.modalStatusDot, { backgroundColor: getStatusColor(selectedDay.status, false) }]} />
-                  <Text style={[
-                    styles.modalStatusText,
-                    { color: getStatusColor(selectedDay.status, false) },
-                  ]}>
-                    {selectedDay.status === 'green' ? 'Available' :
-                     selectedDay.status === 'orange' ? 'Limited Availability' :
-                     'Fully Booked'}
+                <View
+                  style={[
+                    styles.modalStatusBadge,
+                    {
+                      backgroundColor:
+                        getStatusColor(selectedDay.status, false) + '20',
+                      borderColor:
+                        getStatusColor(selectedDay.status, false) + '40',
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.modalStatusDot,
+                      {
+                        backgroundColor: getStatusColor(
+                          selectedDay.status,
+                          false,
+                        ),
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.modalStatusText,
+                      { color: getStatusColor(selectedDay.status, false) },
+                    ]}
+                  >
+                    {selectedDay.status === 'green'
+                      ? 'Available'
+                      : selectedDay.status === 'orange'
+                      ? 'Limited Availability'
+                      : 'Fully Booked'}
                   </Text>
                 </View>
 
                 {/* Stats */}
                 <View style={styles.modalStats}>
                   <View style={styles.modalStat}>
-                    <Text style={[styles.modalStatValue, { color: colors.error }]}>{selectedDay.booked}</Text>
+                    <Text
+                      style={[styles.modalStatValue, { color: colors.error }]}
+                    >
+                      {selectedDay.booked}
+                    </Text>
                     <Text style={styles.modalStatLabel}>Booked</Text>
                   </View>
                   <View style={styles.modalStatDivider} />
                   <View style={styles.modalStat}>
-                    <Text style={[styles.modalStatValue, { color: colors.success }]}>{selectedDay.available}</Text>
+                    <Text
+                      style={[styles.modalStatValue, { color: colors.success }]}
+                    >
+                      {selectedDay.available}
+                    </Text>
                     <Text style={styles.modalStatLabel}>Available</Text>
                   </View>
                   <View style={styles.modalStatDivider} />
                   <View style={styles.modalStat}>
-                    <Text style={styles.modalStatValue}>{selectedDay.total}</Text>
+                    <Text style={styles.modalStatValue}>
+                      {selectedDay.total}
+                    </Text>
                     <Text style={styles.modalStatLabel}>Total</Text>
                   </View>
                 </View>
 
                 {/* Availability bar */}
                 <View style={styles.availBarBg}>
-                  <View style={[
-                    styles.availBarFill,
-                    {
-                      width: `${selectedDay.total > 0 ? (selectedDay.available / selectedDay.total) * 100 : 0}%`,
-                      backgroundColor: getStatusColor(selectedDay.status, false),
-                    },
-                  ]} />
+                  <View
+                    style={[
+                      styles.availBarFill,
+                      {
+                        width: `${
+                          selectedDay.total > 0
+                            ? (selectedDay.available / selectedDay.total) * 100
+                            : 0
+                        }%`,
+                        backgroundColor: getStatusColor(
+                          selectedDay.status,
+                          false,
+                        ),
+                      },
+                    ]}
+                  />
                 </View>
 
                 {/* Slot breakdown */}
@@ -300,19 +391,25 @@ const AvailabilityCalendar = ({ rentals, itemId, totalQuantity }) => {
                     {selectedDay.breakdown.full_day > 0 && (
                       <View style={styles.breakdownRow}>
                         <Text style={styles.breakdownLabel}>Full Day</Text>
-                        <Text style={styles.breakdownValue}>{selectedDay.breakdown.full_day} units</Text>
+                        <Text style={styles.breakdownValue}>
+                          {selectedDay.breakdown.full_day} units
+                        </Text>
                       </View>
                     )}
                     {selectedDay.breakdown.day > 0 && (
                       <View style={styles.breakdownRow}>
                         <Text style={styles.breakdownLabel}>Day</Text>
-                        <Text style={styles.breakdownValue}>{selectedDay.breakdown.day} units</Text>
+                        <Text style={styles.breakdownValue}>
+                          {selectedDay.breakdown.day} units
+                        </Text>
                       </View>
                     )}
                     {selectedDay.breakdown.evening > 0 && (
                       <View style={styles.breakdownRow}>
                         <Text style={styles.breakdownLabel}>Evening</Text>
-                        <Text style={styles.breakdownValue}>{selectedDay.breakdown.evening} units</Text>
+                        <Text style={styles.breakdownValue}>
+                          {selectedDay.breakdown.evening} units
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -391,12 +488,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   dayCell: {
-    width: `${100 / 7}%`,
+    width: '14.2857%',
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: borderRadius.sm,
-    padding: 2,
     position: 'relative',
   },
   dayCellToday: {
