@@ -1,18 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
-  Animated,
   Alert,
-  Modal,
-  TextInput,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows } from '../theme';
+import { colors, spacing, typography, borderRadius } from '../theme';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { RENTAL_SLOTS, getRentalLifecycleStatus } from '../utils/availabilityService';
+import { RENTAL_STATUS_COLORS, PAYMENT_STATUS_COLORS } from '../constants';
 import {
   updateRentalStatus,
   deleteRental,
@@ -20,48 +18,26 @@ import {
 } from '../firebase/rentalsService';
 import GlassmorphismPanel from '../components/GlassmorphismPanel';
 import GlowBackground from '../components/GlowBackground';
-
-const statusColors = {
-  upcoming: { bg: '#6366F120', text: '#6366F1', dot: '#6366F1' },
-  ongoing: { bg: '#10B98120', text: '#10B981', dot: '#10B981' },
-  completed: { bg: '#6B728020', text: '#9CA3AF', dot: '#6B7280' },
-};
-
-const paymentStatusColors = {
-  paid: { text: '#10B981', bg: '#10B98115' },
-  partial: { text: '#F59E0B', bg: '#F59E0B15' },
-  unpaid: { text: '#EF4444', bg: '#EF444415' },
-};
+import {
+  InvoiceHeader,
+  ItemBreakdown,
+  PaymentSummary,
+  ReturnRentalModal,
+  CollectPaymentModal,
+  ConfirmReturnModal,
+  ConfirmCollectModal,
+} from '../components/rentals';
 
 const RentalDetailScreen = ({ route, navigation }) => {
   const { rental } = route.params || {};
-  const headerFade = useRef(new Animated.Value(0)).current;
-  const headerSlide = useRef(new Animated.Value(20)).current;
   const [returnModalVisible, setReturnModalVisible] = useState(false);
   const [amountPaid, setAmountPaid] = useState('');
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  // Collect payment state
   const [collectModalVisible, setCollectModalVisible] = useState(false);
   const [collectAmount, setCollectAmount] = useState('');
   const [collectConfirmVisible, setCollectConfirmVisible] = useState(false);
   const [collectSubmitting, setCollectSubmitting] = useState(false);
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(headerFade, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(headerSlide, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
 
   if (!rental) {
     return (
@@ -72,7 +48,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
   }
 
   const lifecycleStatus = getRentalLifecycleStatus(rental.startDate, rental.endDate, rental.status);
-  const status = statusColors[lifecycleStatus] || statusColors.ongoing;
+  const status = RENTAL_STATUS_COLORS[lifecycleStatus] || RENTAL_STATUS_COLORS.ongoing;
   const totalDays =
     rental.totalDays ||
     rental.items.reduce((sum, item) => sum + (item.days || 1), 0);
@@ -111,31 +87,11 @@ const RentalDetailScreen = ({ route, navigation }) => {
 
   const handleProceedToConfirm = () => {
     if (exceedsTotal) {
-      Alert.alert(
-        'Invalid Amount',
-        'Amount cannot exceed total rental amount.',
-      );
+      Alert.alert('Invalid Amount', 'Amount cannot exceed total rental amount.');
       return;
     }
     setReturnModalVisible(false);
     setConfirmModalVisible(true);
-  };
-
-  const handleConfirmReturn = async () => {
-    setSubmitting(true);
-    try {
-      const paymentStatus = getPaymentStatus(paidNum, remaining);
-      await updateRentalStatus(rental.customerId, rental.id, 'returned', {
-        amountPaid: paidNum,
-        remainingBalance: remaining,
-        paymentStatus,
-      });
-      setConfirmModalVisible(false);
-      navigation.goBack();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update rental status.');
-      setSubmitting(false);
-    }
   };
 
   const handleCollectProceed = () => {
@@ -151,7 +107,24 @@ const RentalDetailScreen = ({ route, navigation }) => {
     setCollectConfirmVisible(true);
   };
 
-  const handleConfirmCollect = async () => {
+  const handleConfirmReturn = useCallback(async () => {
+    setSubmitting(true);
+    try {
+      const paymentStatus = getPaymentStatus(paidNum, remaining);
+      await updateRentalStatus(rental.customerId, rental.id, 'returned', {
+        amountPaid: paidNum,
+        remainingBalance: remaining,
+        paymentStatus,
+      });
+      setConfirmModalVisible(false);
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update rental status.');
+      setSubmitting(false);
+    }
+  }, [paidNum, remaining, rental, navigation]);
+
+  const handleConfirmCollect = useCallback(async () => {
     setCollectSubmitting(true);
     try {
       await collectPayment(rental.customerId, rental.id, collectPaidNum);
@@ -161,12 +134,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
       Alert.alert('Error', error.message || 'Failed to process payment.');
       setCollectSubmitting(false);
     }
-  };
-
-  const paymentStatusStyle =
-    isCompleted && rental.paymentStatus
-      ? paymentStatusColors[rental.paymentStatus] || paymentStatusColors.unpaid
-      : null;
+  }, [collectPaidNum, rental, navigation]);
 
   return (
     <View style={styles.container}>
@@ -191,31 +159,7 @@ const RentalDetailScreen = ({ route, navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View
-          style={[
-            styles.invoiceHeader,
-            { opacity: headerFade, transform: [{ translateY: headerSlide }] },
-          ]}
-        >
-          <View style={styles.invoiceTitleRow}>
-            <View>
-              <Text style={styles.invoiceLabel}>RENTAL INVOICE</Text>
-              <Text style={styles.invoiceId}>
-                #{rental.id.toString().padStart(4, '0')}
-              </Text>
-            </View>
-            <View
-              style={[styles.statusBadgeLarge, { backgroundColor: status.bg }]}
-            >
-              <View
-                style={[styles.statusDotLarge, { backgroundColor: status.dot }]}
-              />
-              <Text style={[styles.statusTextLarge, { color: status.text }]}>
-                {lifecycleStatus.toUpperCase()}
-              </Text>
-            </View>
-          </View>
-        </Animated.View>
+        <InvoiceHeader rentalId={rental.id} status={status} lifecycleStatus={lifecycleStatus} />
         <GlassmorphismPanel style={styles.section}>
           <Text style={styles.sectionLabel}>CUSTOMER INFORMATION</Text>
           <Text style={styles.customerNameLarge}>{rental.customerName}</Text>
@@ -248,84 +192,14 @@ const RentalDetailScreen = ({ route, navigation }) => {
             <Text style={styles.infoValue}>{totalUnits} units</Text>
           </View>
         </GlassmorphismPanel>
-        <GlassmorphismPanel style={styles.section}>
-          <Text style={styles.sectionLabel}>ITEM BREAKDOWN</Text>
-          {rental.items.map((item, i) => (
-            <View key={i} style={styles.itemRow}>
-              <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.itemName}</Text>
-                <Text style={styles.itemDetails}>
-                  Qty: {item.quantity || 1} * {formatCurrency(item.pricePerDay)}
-                  /day
-                </Text>
-              </View>
-              <Text style={styles.itemTotal}>
-                {formatCurrency(
-                  item.total ||
-                    item.pricePerDay * totalDays * (item.quantity || 1),
-                )}
-              </Text>
-            </View>
-          ))}
-          <View style={styles.totalContainer}>
-            <View style={styles.totalDivider} />
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>TOTAL AMOUNT</Text>
-              <Text style={styles.totalValue}>
-                {formatCurrency(totalAmount)}
-              </Text>
-            </View>
-          </View>
-        </GlassmorphismPanel>
+        <ItemBreakdown items={rental.items} totalDays={totalDays} totalAmount={totalAmount} />
         {isCompleted && rental.amountPaid != null && (
-          <GlassmorphismPanel style={styles.section}>
-            <Text style={styles.sectionLabel}>PAYMENT SUMMARY</Text>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Total Amount</Text>
-              <Text style={styles.infoValue}>
-                {formatCurrency(totalAmount)}
-              </Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Paid</Text>
-              <Text style={[styles.infoValue, { color: colors.success }]}>
-                {formatCurrency(rental.amountPaid)}
-              </Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Remaining</Text>
-              <Text
-                style={[
-                  styles.infoValue,
-                  {
-                    color:
-                      rental.remainingBalance > 0
-                        ? colors.warning
-                        : colors.success,
-                  },
-                ]}
-              >
-                {formatCurrency(rental.remainingBalance || 0)}
-              </Text>
-            </View>
-            {paymentStatusStyle && (
-              <View
-                style={[
-                  styles.paymentStatusChip,
-                  { backgroundColor: paymentStatusStyle.bg },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.paymentStatusText,
-                    { color: paymentStatusStyle.text },
-                  ]}
-                >
-                  {(rental.paymentStatus || '').toUpperCase()}
-                </Text>
-              </View>
-            )}
-          </GlassmorphismPanel>
+          <PaymentSummary
+            totalAmount={totalAmount}
+            amountPaid={rental.amountPaid}
+            remainingBalance={rental.remainingBalance}
+            paymentStatus={rental.paymentStatus}
+          />
         )}
         <View style={styles.actionsSection}>
           {isActive && (
@@ -382,310 +256,48 @@ const RentalDetailScreen = ({ route, navigation }) => {
         </View>
         <View style={styles.bottomSpacer} />
       </ScrollView>
-      <Modal
+      <ReturnRentalModal
         visible={returnModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setReturnModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setReturnModalVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Return Rental</Text>
-            <GlassmorphismPanel style={styles.modalTotalCard}>
-              <Text style={styles.modalTotalLabel}>Rental Total</Text>
-              <Text style={styles.modalTotalValue}>
-                {formatCurrency(totalAmount)}
-              </Text>
-            </GlassmorphismPanel>
-            <View style={styles.modalInputSection}>
-              <Text style={styles.modalInputLabel}>Customer Paid</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Enter amount (0 if no payment)"
-                placeholderTextColor={colors.textMuted}
-                value={amountPaid}
-                onChangeText={t => setAmountPaid(t.replace(/[^0-9]/g, ''))}
-                keyboardType="number-pad"
-                maxLength={10}
-                autoFocus
-              />
-            </View>
-            {!exceedsTotal && (
-              <View style={styles.liveCalcRow}>
-                <Text style={styles.liveCalcLabel}>Remaining Balance</Text>
-                <Text
-                  style={[
-                    styles.liveCalcValue,
-                    { color: remaining > 0 ? colors.warning : colors.success },
-                  ]}
-                >
-                  {formatCurrency(remaining)} PKR
-                </Text>
-              </View>
-            )}
-            {exceedsTotal && (
-              <View style={styles.validationError}>
-                <Text style={styles.validationErrorText}>
-                  Amount cannot exceed total rental amount.
-                </Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={[
-                styles.modalProceedBtn,
-                exceedsTotal && styles.modalProceedBtnDisabled,
-              ]}
-              onPress={handleProceedToConfirm}
-              disabled={exceedsTotal}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modalProceedBtnText}>Continue</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalCancelBtn}
-              onPress={() => setReturnModalVisible(false)}
-            >
-              <Text style={styles.modalCancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-      {/* Collect Payment Modal */}
-      <Modal
+        totalAmount={totalAmount}
+        amountPaid={amountPaid}
+        setAmountPaid={setAmountPaid}
+        remaining={remaining}
+        exceedsTotal={exceedsTotal}
+        onProceed={handleProceedToConfirm}
+        onCancel={() => setReturnModalVisible(false)}
+      />
+      <CollectPaymentModal
         visible={collectModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCollectModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setCollectModalVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Collect Payment</Text>
-            <GlassmorphismPanel style={styles.modalTotalCard}>
-              <Text style={styles.modalTotalLabel}>Remaining Balance</Text>
-              <Text style={styles.modalTotalValue}>
-                {formatCurrency(collectRemainingBalance)}
-              </Text>
-            </GlassmorphismPanel>
-            <View style={styles.modalInputSection}>
-              <Text style={styles.modalInputLabel}>Payment Amount</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Enter amount"
-                placeholderTextColor={colors.textMuted}
-                value={collectAmount}
-                onChangeText={t => setCollectAmount(t.replace(/[^0-9]/g, ''))}
-                keyboardType="number-pad"
-                maxLength={10}
-                autoFocus
-              />
-            </View>
-            {collectAmount.length > 0 &&
-              !exceedsRemaining &&
-              collectPaidNum > 0 && (
-                <View style={styles.liveCalcRow}>
-                  <Text style={styles.liveCalcLabel}>New Remaining</Text>
-                  <Text
-                    style={[
-                      styles.liveCalcValue,
-                      {
-                        color:
-                          newRemaining > 0 ? colors.warning : colors.success,
-                      },
-                    ]}
-                  >
-                    {formatCurrency(newRemaining)} PKR
-                  </Text>
-                </View>
-              )}
-            {exceedsRemaining && (
-              <View style={styles.validationError}>
-                <Text style={styles.validationErrorText}>
-                  Amount cannot exceed remaining balance.
-                </Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={[
-                styles.modalProceedBtn,
-                (exceedsRemaining ||
-                  collectAmount === '' ||
-                  collectPaidNum <= 0) &&
-                  styles.modalProceedBtnDisabled,
-              ]}
-              onPress={handleCollectProceed}
-              disabled={
-                exceedsRemaining || collectAmount === '' || collectPaidNum <= 0
-              }
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modalProceedBtnText}>Continue</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalCancelBtn}
-              onPress={() => setCollectModalVisible(false)}
-            >
-              <Text style={styles.modalCancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        remainingBalance={collectRemainingBalance}
+        amount={collectAmount}
+        setAmount={setCollectAmount}
+        exceedsRemaining={exceedsRemaining}
+        newRemaining={newRemaining}
+        onProceed={handleCollectProceed}
+        onCancel={() => setCollectModalVisible(false)}
+      />
 
-      {/* Collect Payment Confirmation */}
-      <Modal
+      <ConfirmCollectModal
         visible={collectConfirmVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCollectConfirmVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setCollectConfirmVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Confirm Payment</Text>
-            <GlassmorphismPanel style={styles.confirmSummary}>
-              <View style={styles.confirmRow}>
-                <Text style={styles.confirmLabel}>Previous Paid</Text>
-                <Text style={styles.confirmValue}>
-                  {formatCurrency(rental.amountPaid || 0)} PKR
-                </Text>
-              </View>
-              <View style={styles.confirmDivider} />
-              <View style={styles.confirmRow}>
-                <Text style={styles.confirmLabel}>New Payment</Text>
-                <Text style={[styles.confirmValue, { color: colors.success }]}>
-                  {formatCurrency(collectPaidNum)} PKR
-                </Text>
-              </View>
-              <View style={styles.confirmDivider} />
-              <View style={styles.confirmRow}>
-                <Text style={styles.confirmLabel}>Total Paid</Text>
-                <Text style={styles.confirmValue}>
-                  {formatCurrency((rental.amountPaid || 0) + collectPaidNum)}{' '}
-                  PKR
-                </Text>
-              </View>
-              <View style={styles.confirmDivider} />
-              <View style={styles.confirmRow}>
-                <Text style={styles.confirmLabel}>Remaining</Text>
-                <Text
-                  style={[
-                    styles.confirmValue,
-                    {
-                      color: newRemaining > 0 ? colors.warning : colors.success,
-                    },
-                  ]}
-                >
-                  {formatCurrency(newRemaining)} PKR
-                </Text>
-              </View>
-            </GlassmorphismPanel>
-            <TouchableOpacity
-              style={[
-                styles.modalProceedBtn,
-                collectSubmitting && styles.modalProceedBtnDisabled,
-              ]}
-              onPress={handleConfirmCollect}
-              disabled={collectSubmitting}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modalProceedBtnText}>
-                {collectSubmitting ? 'Processing...' : 'Confirm Payment'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalCancelBtn}
-              onPress={() => {
-                setCollectConfirmVisible(false);
-                setCollectModalVisible(true);
-              }}
-              disabled={collectSubmitting}
-            >
-              <Text style={styles.modalCancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        previousPaid={rental.amountPaid || 0}
+        collectPaidNum={collectPaidNum}
+        newRemaining={newRemaining}
+        submitting={collectSubmitting}
+        onConfirm={handleConfirmCollect}
+        onBack={() => { setCollectConfirmVisible(false); setCollectModalVisible(true); }}
+        onCancel={() => setCollectConfirmVisible(false)}
+      />
 
-      <Modal
+      <ConfirmReturnModal
         visible={confirmModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setConfirmModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setConfirmModalVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Confirm Return</Text>
-            <GlassmorphismPanel style={styles.confirmSummary}>
-              <View style={styles.confirmRow}>
-                <Text style={styles.confirmLabel}>Rental Total</Text>
-                <Text style={styles.confirmValue}>
-                  {formatCurrency(totalAmount)} PKR
-                </Text>
-              </View>
-              <View style={styles.confirmDivider} />
-              <View style={styles.confirmRow}>
-                <Text style={styles.confirmLabel}>Customer Paid</Text>
-                <Text style={[styles.confirmValue, { color: colors.success }]}>
-                  {formatCurrency(paidNum)} PKR
-                </Text>
-              </View>
-              <View style={styles.confirmDivider} />
-              <View style={styles.confirmRow}>
-                <Text style={styles.confirmLabel}>Remaining</Text>
-                <Text
-                  style={[
-                    styles.confirmValue,
-                    { color: remaining > 0 ? colors.warning : colors.success },
-                  ]}
-                >
-                  {formatCurrency(remaining)} PKR
-                </Text>
-              </View>
-            </GlassmorphismPanel>
-            <TouchableOpacity
-              style={[
-                styles.modalProceedBtn,
-                submitting && styles.modalProceedBtnDisabled,
-              ]}
-              onPress={handleConfirmReturn}
-              disabled={submitting}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.modalProceedBtnText}>
-                {submitting ? 'Processing...' : 'Confirm Return'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalCancelBtn}
-              onPress={() => {
-                setConfirmModalVisible(false);
-                setReturnModalVisible(true);
-              }}
-              disabled={submitting}
-            >
-              <Text style={styles.modalCancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        totalAmount={totalAmount}
+        paidNum={paidNum}
+        remaining={remaining}
+        submitting={submitting}
+        onConfirm={handleConfirmReturn}
+        onBack={() => { setConfirmModalVisible(false); setReturnModalVisible(true); }}
+        onCancel={() => setConfirmModalVisible(false)}
+      />
     </View>
   );
 };
@@ -709,45 +321,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xxxl,
   },
-  invoiceHeader: {
-    marginBottom: spacing.xl,
-  },
-  invoiceTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  invoiceLabel: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.extrabold,
-    color: colors.textTertiary,
-    letterSpacing: 2,
-    marginBottom: spacing.xs,
-  },
-  invoiceId: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
-  statusBadgeLarge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.round,
-    marginBottom: 4,
-  },
-  statusDotLarge: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.sm,
-  },
-  statusTextLarge: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    letterSpacing: 1,
-  },
+
   section: {
     marginBottom: spacing.lg,
   },
@@ -785,68 +359,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.semibold,
     color: colors.textPrimary,
   },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  itemInfo: {
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  itemName: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium,
-    color: colors.textPrimary,
-  },
-  itemDetails: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textTertiary,
-    marginTop: 2,
-  },
-  itemTotal: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.accent,
-  },
-  totalContainer: {
-    marginTop: spacing.sm,
-  },
-  totalDivider: {
-    height: 1,
-    backgroundColor: colors.borderLight,
-    marginBottom: spacing.md,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  totalLabel: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textSecondary,
-  },
-  totalValue: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.accent,
-  },
-  paymentStatusChip: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.round,
-    marginTop: spacing.md,
-  },
-  paymentStatusText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    letterSpacing: 1,
-  },
+
   actionsSection: {
     marginTop: spacing.xxl,
     gap: spacing.md,
@@ -906,149 +419,7 @@ const styles = StyleSheet.create({
   bottomSpacer: {
     height: 40,
   },
-  // ─── Modal Styles ───
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: borderRadius.xxl,
-    borderTopRightRadius: borderRadius.xxl,
-    padding: spacing.xxl,
-    paddingBottom: spacing.huge,
-  },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.textMuted,
-    alignSelf: 'center',
-    marginBottom: spacing.xxl,
-  },
-  modalTitle: {
-    fontSize: typography.fontSize.xxl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-    marginBottom: spacing.xxl,
-    textAlign: 'center',
-  },
-  modalTotalCard: {
-    marginBottom: spacing.xxl,
-    alignItems: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  modalTotalLabel: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textTertiary,
-    marginBottom: spacing.sm,
-    letterSpacing: 1,
-  },
-  modalTotalValue: {
-    fontSize: typography.fontSize.huge,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.accent,
-  },
-  modalInputSection: {
-    marginBottom: spacing.lg,
-  },
-  modalInputLabel: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  modalInput: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  liveCalcRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.xxl,
-  },
-  liveCalcLabel: {
-    fontSize: typography.fontSize.md,
-    color: colors.textSecondary,
-  },
-  liveCalcValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-  },
-  validationError: {
-    backgroundColor: colors.error + '15',
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.error + '30',
-  },
-  validationErrorText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.errorLight,
-    textAlign: 'center',
-  },
-  modalProceedBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.lg,
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  modalProceedBtnDisabled: {
-    opacity: 0.4,
-  },
-  modalProceedBtnText: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
-  modalCancelBtn: {
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  modalCancelBtnText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.medium,
-    color: colors.textTertiary,
-  },
-  confirmSummary: {
-    padding: spacing.xxl,
-    marginBottom: spacing.xxl,
-  },
-  confirmRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  confirmLabel: {
-    fontSize: typography.fontSize.md,
-    color: colors.textSecondary,
-  },
-  confirmValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
-  },
-  confirmDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-  },
+
 });
 
 export default RentalDetailScreen;

@@ -231,7 +231,7 @@ const AddRentalScreen = ({ route, navigation }) => {
     }
     const currentDate = selectedDate || endDate;
     setShowEndPicker(Platform.OS === 'ios');
-    if (currentDate < startDate) {
+    if (currentDate > startDate) {
       Alert.alert('Invalid Date', 'End date must be on or after start date.');
       return;
     }
